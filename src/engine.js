@@ -236,6 +236,7 @@ function scan(config, nowMs) {
   };
   const byModel = {};
   const byProject = {};
+  const bySid = {};
 
   // sparkline: last 24 hours, hourly
   const hourly = [];
@@ -279,6 +280,14 @@ function scan(config, nowMs) {
     }
     const dk = dateKey(e.t);
     if (daily[dk]) { daily[dk].tokens += entryTokens(e); daily[dk].cost += entryCost(e, pricing); }
+
+    // keep a running total of tokens and cost per session id.
+    // addition is done in the loop that already walks every token, so a session total costs no extra pass.
+    if (e.sid) {
+      const sb = bySid[e.sid] || (bySid[e.sid] = { tokens: 0, cost: 0 });
+      sb.tokens += entryTokens(e);
+      sb.cost += entryCost(e, pricing);
+    }
   }
 
   // per session: the latest call defines current context, the largest call ever
@@ -314,6 +323,7 @@ function scan(config, nowMs) {
   const idleMs = (config.idleMinutes || 10) * 60 * 1000;
   const sessionsOut = sessionList.slice(0, 50).map(s => {
     const cf = contextFor(s.sid);
+    const tot = bySid[s.sid] || { tokens: 0, cost: 0 };
     return {
       sid: s.sid,
       title: s.title || '(untitled session)',
@@ -327,8 +337,8 @@ function scan(config, nowMs) {
       assistantMsgs: s.assistantMsgs,
       toolCalls: s.toolCalls,
       errors: s.errors,
-      tokens: sessionTokens(allTokens, s.sid),
-      cost: sessionCost(allTokens, s.sid, pricing),
+      tokens: tot.tokens,
+      cost: tot.cost,
       contextUsed: cf.used,
       contextLimit: cf.limit,
       contextPercent: cf.percent,
@@ -436,17 +446,6 @@ function scan(config, nowMs) {
       files: files.length,
     },
   };
-}
-
-function sessionTokens(all, sid) {
-  let n = 0;
-  for (const e of all) if (e.sid === sid) n += entryTokens(e);
-  return n;
-}
-function sessionCost(all, sid, pricing) {
-  let c = 0;
-  for (const e of all) if (e.sid === sid) c += entryCost(e, pricing);
-  return c;
 }
 
 // Effective context window for a session. Claude Code uses 200k by default and
