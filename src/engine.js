@@ -347,6 +347,13 @@ function scan(config, nowMs) {
       project: sidProject[t.sid] || 'unknown',
     }));
 
+  // count tool calls by name (Bash, Edit, Read, ...) across every session.
+  const byTool = {};
+  for (const t of allTools) {
+    if (!t.name) continue;
+    (byTool[t.name] = byTool[t.name] || { count: 0 }).count++;
+  }
+
   // rough ETA for the active session: how long past turns took vs how long the
   // current one has been running. Inherently a guess, labelled as such in the UI.
   function computeEta(sid) {
@@ -427,6 +434,7 @@ function scan(config, nowMs) {
     windows,
     byModel,
     byProject,
+    byTool,
     hourly,
     daily: Object.values(daily),
     sessions: sessionsOut,

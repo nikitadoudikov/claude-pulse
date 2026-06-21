@@ -148,6 +148,7 @@ function renderUsage() {
   chart(document.getElementById('usage-daily'), seriesFor(s, '30d'), 'bars');
   document.getElementById('usage-models').innerHTML = breakdownHtml(s.byModel);
   document.getElementById('usage-projects').innerHTML = breakdownHtml(s.byProject);
+  document.getElementById('usage-tools').innerHTML = toolsHtml(s.byTool || {});
 
   var t = s.windows.total;
   var comp = [
@@ -171,6 +172,21 @@ function breakdownHtml(map) {
     var pct = max ? (b.tokens / max) * 100 : 0;
     return '<div class="brk"><div class="brk__top"><span class="brk__name">' + esc(k) + '</span>' +
       '<span class="brk__val">' + fmtTokens(b.tokens) + ' · ' + fmtCost(b.cost) + '</span></div>' +
+      barHtml(pct, 'is-ok') + '</div>';
+  }).join('');
+}
+
+function toolsHtml(map) {
+  var keys = Object.keys(map);
+  if (!keys.length) return '<div class="empty">no data</div>';
+  var max = 0;
+  keys.forEach(function (k) { if (map[k].count > max) max = map[k].count; });
+  keys.sort(function (a, b) { return map[b].count - map[a].count; });
+  return keys.map(function (k) {
+    var b = map[k];
+    var pct = max ? (b.count / max) * 100 : 0;
+    return '<div class="brk"><div class="brk__top"><span class="brk__name">' + esc(k) + '</span>' +
+      '<span class="brk__val">' + full(b.count) + ' call' + (b.count === 1 ? '' : 's') + '</span></div>' +
       barHtml(pct, 'is-ok') + '</div>';
   }).join('');
 }
