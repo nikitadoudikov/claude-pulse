@@ -47,7 +47,12 @@ function loadConfig() {
     idleMinutes: 10,      // a session is "active" if it moved within this window
     pricing: PRICING,
     budgets: null,        // filled from the plan preset unless set explicitly
-    ntfyTopic: '',        // ntfy.sh topic for phone push; empty = off
+    ntfyTopic: '',        // ntfy topic for phone push; empty = off
+    ntfyServer: 'https://ntfy.sh', // ntfy server base URL (self-hosted or ntfy.sh)
+    ntfyToken: '',        // ntfy access token for reserved/protected topics; empty = anonymous
+    ntfyPushApproval: true,     // phone push for approval prompts (permission hook)
+    ntfyPushNotification: true, // phone push for "Claude needs you" (notification hook)
+    ntfyPushStop: true,         // phone push for "Claude finished" (stop hook)
     bindLan: false,       // listen on the LAN so a phone on Wi-Fi can approve
     lanUrl: '',           // e.g. http://192.168.1.20:4317 ; enables phone Allow buttons
     approvalTimeoutMs: 60000, // how long the Allow hook waits for you before the normal prompt

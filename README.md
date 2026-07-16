@@ -241,6 +241,45 @@ a random name.
 If you set `budgets` (below), Pulse also pushes when a rolling window crosses 80%
 then 100% of its budget, so you find out from your pocket, not by checking.
 
+### Reserved topics, access tokens, and self-hosted ntfy
+
+On bare public ntfy.sh the topic name is the entire security boundary. To close
+that, reserve the topic (ntfy Supporter tier or self-hosted server ACLs), reserve
+`<topic>-reply` the same way, mint an access token, and set:
+
+```json
+{
+  "ntfyTopic": "claude-pulse-9f3a7c",
+  "ntfyServer": "https://ntfy.sh",
+  "ntfyToken": "tk_..."
+}
+```
+
+With `ntfyToken` set, every publish and the reply-topic subscription send
+`Authorization: Bearer <token>`, and the Allow / Allow all / Deny buttons carry
+the same header in their action definition (the ntfy app does not attach your
+account credentials to `http` actions on its own, so replies to a reserved
+reply topic need it). Note the token is therefore embedded in the notification
+payload; on a reserved, subscriber-only topic the only parties who can see it
+are your own devices and the ntfy server that issued it. `ntfyServer` also
+accepts a self-hosted base URL, e.g. `https://ntfy.example.com`.
+
+### Per-hook push toggles
+
+If another tool already pushes some of these events (or you only want approval
+pushes), turn individual hooks' pushes off without unsetting the topic:
+
+```json
+{
+  "ntfyPushApproval": true,
+  "ntfyPushNotification": false,
+  "ntfyPushStop": false
+}
+```
+
+All three default to `true`. They gate only the phone push; desktop
+notifications and the dashboard event feed are unaffected.
+
 ## Configuration
 
 Copy `config.example.json` to `~/.claude-pulse.json` and edit. Every field is optional.

@@ -62,23 +62,39 @@ function desktopNotify(title, body) {
 }
 function q(s) { return '"' + String(s).replace(/["\\]/g, '\\$&') + '"'; }
 
-function readNtfyTopic() {
-  try { return JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude-pulse.json'), 'utf8')).ntfyTopic || ''; }
-  catch (e) { return ''; }
+// ntfy settings from ~/.claude-pulse.json: topic, server (self-hosted or
+// ntfy.sh), access token for reserved topics, and the per-hook push toggle.
+// A bad ntfyServer URL falls back to ntfy.sh so a typo cannot break the hook.
+function ntfySettings() {
+  var cfg = {};
+  try { cfg = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude-pulse.json'), 'utf8')) || {}; } catch (e) {}
+  var u;
+  try { u = new URL(String(cfg.ntfyServer || 'https://ntfy.sh')); }
+  catch (e) { u = new URL('https://ntfy.sh'); }
+  return {
+    topic: cfg.ntfyTopic || '',
+    token: String(cfg.ntfyToken || ''),
+    mod: u.protocol === 'http:' ? require('http') : https,
+    hostname: u.hostname,
+    port: u.port ? parseInt(u.port, 10) : (u.protocol === 'http:' ? 80 : 443),
+    pushNotification: cfg.ntfyPushNotification !== false,
+  };
 }
-function pushNtfy(topic, title, message, tags) {
-  if (!topic) return Promise.resolve();
+function pushNtfy(n, title, message, tags) {
+  if (!n.topic || !n.pushNotification) return Promise.resolve();
   return new Promise(function (resolve) {
     var data = Buffer.from(message || '', 'utf8');
-    var req = https.request({
-      method: 'POST', hostname: 'ntfy.sh', path: '/' + encodeURIComponent(topic),
-      headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Content-Length': data.length,
-        'Title': String(title || 'Claude Code').replace(/[^\x20-\x7E]/g, ''),
-        'Tags': tags || 'warning',
-        'Priority': 'high',
-      },
+    var headers = {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Content-Length': data.length,
+      'Title': String(title || 'Claude Code').replace(/[^\x20-\x7E]/g, ''),
+      'Tags': tags || 'warning',
+      'Priority': 'high',
+    };
+    if (n.token) headers.Authorization = 'Bearer ' + n.token;
+    var req = n.mod.request({
+      method: 'POST', hostname: n.hostname, port: n.port, path: '/' + encodeURIComponent(n.topic),
+      headers: headers,
     }, function (res) { res.on('data', function () {}); res.on('end', resolve); });
     req.on('error', resolve);
     req.write(data); req.end();
@@ -103,7 +119,7 @@ function pushNtfy(topic, title, message, tags) {
   appendEvent(ev);
   const project = ev.cwd ? path.basename(ev.cwd) : '';
   desktopNotify('Claude Code' + (project ? ' · ' + project : ''), message);
-  await pushNtfy(readNtfyTopic(), 'Claude needs you' + (project ? ' (' + project + ')' : ''), message, 'warning');
+  await pushNtfy(ntfySettings(), 'Claude needs you' + (project ? ' (' + project + ')' : ''), message, 'warning');
 
   process.exit(0);
 })();
