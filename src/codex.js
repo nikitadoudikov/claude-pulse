@@ -16,6 +16,7 @@ const INDEX_FILE = path.join(CODEX_DIR, 'session_index.jsonl');
 
 function projectName(cwd) {
   if (!cwd) return null;
+  if (cwd === os.homedir()) return 'home';
   return path.basename(cwd) || cwd;
 }
 

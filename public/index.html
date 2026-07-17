@@ -246,6 +246,10 @@
       <div class="card profile__hero" id="profile-hero"></div>
       <div class="cards" id="profile-stats"></div>
       <div class="card">
+        <div class="card__head"><span class="card__title">Last 13 weeks</span><span class="card__hint" id="profile-heat-hint"></span></div>
+        <div class="heat" id="profile-heat"></div>
+      </div>
+      <div class="card">
         <div class="card__head"><span class="card__title">Achievements</span><span class="card__hint" id="profile-achv-count"></span></div>
         <div class="achv" id="profile-achv"></div>
       </div>
@@ -270,6 +274,14 @@
   </div>
 
   <div class="tip" id="chart-tip" hidden></div>
+
+  <div class="wrapped" id="wrapped" hidden>
+    <div class="wrapped__card" id="wrapped-card"></div>
+    <div class="wrapped__actions">
+      <button class="abtn abtn--allow" id="wrapped-save">save as image</button>
+      <button class="abtn" id="wrapped-close">close</button>
+    </div>
+  </div>
 
   <div class="focus" id="focus" hidden>
     <div class="focus__card">

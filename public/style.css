@@ -459,7 +459,7 @@ html[data-mode="codex"] .chip--accent { background: var(--accent-soft); color: v
 .foot__sep { opacity: .5; }
 
 /* ===== Office / crab scene ===== */
-.office { display: flex; flex-direction: column; align-items: center; padding: 16px 0 40px; }
+.office { position: relative; display: flex; flex-direction: column; align-items: center; padding: 16px 0 40px; }
 .office__scene { width: 100%; max-width: 560px; }
 .scene-svg { width: 100%; height: auto; display: block; }
 
@@ -691,9 +691,12 @@ body.office-mode .office__sub { color: #b7b5ab; }
 /* ===== Office music ===== */
 .music { position: absolute; right: 18px; bottom: 18px; z-index: 6; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 .music__btn {
-  width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--hairline);
-  background: var(--surface); color: var(--muted); font-size: 17px;
+  width: 46px; height: 46px; border-radius: 50%; border: 0;
+  background: var(--accent); color: #fff; font-size: 20px; line-height: 1;
+  box-shadow: 0 6px 20px rgba(0,0,0,.35);
+  transition: transform .15s var(--ease);
 }
+.music__btn:hover { transform: scale(1.08); }
 .music__btn.is-on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .music__panel { display: flex; gap: 6px; background: var(--surface); border: 1px solid var(--hairline); border-radius: 10px; padding: 8px; }
 .music__panel input { width: 240px; border: 1px solid var(--hairline); background: var(--surface-2); color: var(--text); font: inherit; font-size: 12px; padding: 6px 9px; border-radius: 7px; }
@@ -722,3 +725,38 @@ body.office-mode .office__sub { color: #b7b5ab; }
 .obs-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; cursor: pointer; }
 .obs-toggle input { accent-color: var(--accent); }
 #sessions-jump { max-width: 260px; }
+
+/* ===== Profile heatmap ===== */
+.heat { display: flex; gap: 3px; overflow-x: auto; padding: 4px 0; }
+.heat__col { display: flex; flex-direction: column; gap: 3px; }
+.heat__cell { width: 13px; height: 13px; border-radius: 3px; background: var(--track); display: block; }
+.heat__cell.is-pad { background: transparent; }
+.heat__cell.l1 { background: rgba(217,119,87,.25); }
+.heat__cell.l2 { background: rgba(217,119,87,.5); }
+.heat__cell.l3 { background: rgba(217,119,87,.75); }
+.heat__cell.l4 { background: var(--accent); }
+
+/* ===== Pulse Wrapped ===== */
+.wrapped-btn {
+  margin-top: 18px; border: 0; border-radius: 999px; padding: 10px 22px;
+  background: var(--accent); color: #fff; font: inherit; font-size: 14px; font-weight: 600;
+  box-shadow: 0 8px 24px rgba(217,119,87,.35); transition: transform .15s var(--ease);
+}
+.wrapped-btn:hover { transform: translateY(-2px); }
+.wrapped { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.6); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; }
+.wrapped__card {
+  width: min(420px, 92vw); border-radius: 20px; padding: 34px 30px;
+  background: #1f1e1b; color: #eceae1; border: 1px solid rgba(255,255,255,.09);
+  background-image: linear-gradient(180deg, rgba(217,119,87,.18), rgba(217,119,87,0) 34%);
+  box-shadow: 0 30px 80px rgba(0,0,0,.5);
+}
+.wrapped__brand { font-size: 14px; font-weight: 700; letter-spacing: .14em; color: #d97757; }
+.wrapped__range { margin-top: 4px; font-size: 13px; color: #9a988e; }
+.wrapped__big { margin-top: 22px; font-size: 74px; font-weight: 700; line-height: 1; color: #d97757; letter-spacing: -0.02em; }
+.wrapped__biglabel { margin-top: 6px; font-size: 14px; color: #9a988e; }
+.wrapped__rows { margin-top: 24px; }
+.wrapped__row { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-top: 1px solid rgba(255,255,255,.08); font-size: 13.5px; }
+.wrapped__row span { color: #9a988e; }
+.wrapped__rank { margin-top: 22px; font-size: 30px; font-weight: 700; color: #d97757; }
+.wrapped__foot { margin-top: 6px; font-size: 11px; color: #6f6d64; }
+.wrapped__actions { display: flex; gap: 10px; }

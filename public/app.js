@@ -1499,7 +1499,10 @@ function renderProfile() {
     '<div class="profile__like">' +
       (topProj ? 'most of your energy goes to <b>' + esc(topProj) + '</b>' : '') +
       (topTool ? (topProj ? ' · ' : '') + 'favourite move: <b>' + esc(topTool) + '</b> ×' + full(topToolN) : '') +
-    '</div>';
+    '</div>' +
+    '<button class="wrapped-btn" id="wrapped-open">✨ your week, wrapped</button>';
+
+  renderHeatmap(s);
 
   var cards = [
     { label: 'Sessions', v: full(s.totals.sessions) },
@@ -1522,6 +1525,164 @@ function renderProfile() {
     '</div>';
   }).join('');
 }
+
+// ---------- profile heatmap: 13 weeks, GitHub-style ----------
+function renderHeatmap(s) {
+  var el = document.getElementById('profile-heat');
+  if (!el) return;
+  var daily = s.daily || [];
+  var nz = daily.map(function (d) { return d.tokens; }).filter(function (v) { return v > 0; }).sort(function (a, b) { return a - b; });
+  var q = function (p) { return nz.length ? nz[Math.min(nz.length - 1, Math.floor(nz.length * p))] : 1; };
+  var t1 = q(0.25), t2 = q(0.5), t3 = q(0.75);
+  function lvl(v) { return !v ? 0 : v <= t1 ? 1 : v <= t2 ? 2 : v <= t3 ? 3 : 4; }
+  // columns are weeks; pad the front so columns start on Monday
+  var first = daily.length ? new Date(daily[0].date) : new Date();
+  var pad = (first.getDay() + 6) % 7;
+  var cells = [];
+  for (var i = 0; i < pad; i++) cells.push(null);
+  daily.forEach(function (d) { cells.push(d); });
+  var weeks = [];
+  for (var w = 0; w < cells.length; w += 7) weeks.push(cells.slice(w, w + 7));
+  el.innerHTML = weeks.map(function (col) {
+    return '<div class="heat__col">' + col.map(function (d) {
+      if (!d) return '<i class="heat__cell is-pad"></i>';
+      return '<i class="heat__cell l' + lvl(d.tokens) + '" title="' + esc(d.date) + ' · ' + fmtTokens(d.tokens) + ' tok · ' + fmtCost(d.cost) + '"></i>';
+    }).join('') + '</div>';
+  }).join('');
+  var active = daily.filter(function (d) { return d.tokens > 0; }).length;
+  var hint = document.getElementById('profile-heat-hint');
+  if (hint) hint.textContent = active + ' active days · hover a square';
+}
+
+// ---------- Pulse Wrapped: your week as a shareable card ----------
+function wrappedData(s) {
+  var week = (s.daily || []).slice(-7);
+  var tok = 0, cost = 0, days = 0, best = null;
+  week.forEach(function (d) {
+    tok += d.tokens; cost += d.cost;
+    if (d.tokens > 0) days++;
+    if (!best || d.tokens > best.tokens) best = d;
+  });
+  // top project this week: sessions that were touched in the last 7 days
+  var cut = Date.now() - 7 * 86400 * 1000;
+  var proj = {};
+  (s.sessions || []).forEach(function (x) {
+    if (x.lastT && x.lastT >= cut && x.project && x.project !== 'unknown') {
+      proj[x.project] = (proj[x.project] || 0) + (x.tokens || 0);
+    }
+  });
+  var topProj = '', topN = 0;
+  Object.keys(proj).forEach(function (k) { if (proj[k] > topN) { topN = proj[k]; topProj = k; } });
+  var range = week.length
+    ? week[0].date.slice(5).replace('-', '/') + ' – ' + week[week.length - 1].date.slice(5).replace('-', '/')
+    : '';
+  var ach = computeAchievements(s);
+  return {
+    range: range, tokens: tok, cost: cost, days: days,
+    best: best && best.tokens ? best : null,
+    topProj: topProj, rank: s.rank || '',
+    streak: streakDays(s.daily || []),
+    achv: ach.filter(function (a) { return a.ok; }).length, achvTotal: ach.length,
+  };
+}
+
+function openWrapped() {
+  var s = state.stats;
+  if (!s) return;
+  var d = wrappedData(s);
+  var rows = [
+    { k: 'API-equivalent burned', v: fmtCost(d.cost) },
+    { k: 'days at the keyboard', v: d.days + ' of 7' },
+    d.best ? { k: 'biggest day', v: d.best.date.slice(5).replace('-', '/') + ' · ' + fmtTokens(d.best.tokens) } : null,
+    d.topProj ? { k: 'obsession of the week', v: d.topProj } : null,
+    { k: 'streak', v: d.streak + ' days' },
+    { k: 'achievements', v: d.achv + ' / ' + d.achvTotal },
+  ].filter(Boolean);
+  document.getElementById('wrapped-card').innerHTML =
+    '<div class="wrapped__brand">✦ PULSE WRAPPED</div>' +
+    '<div class="wrapped__range">' + esc(d.range) + '</div>' +
+    '<div class="wrapped__big">' + fmtTokens(d.tokens) + '</div>' +
+    '<div class="wrapped__biglabel">tokens this week</div>' +
+    '<div class="wrapped__rows">' + rows.map(function (r) {
+      return '<div class="wrapped__row"><span>' + esc(r.k) + '</span><b>' + esc(r.v) + '</b></div>';
+    }).join('') + '</div>' +
+    '<div class="wrapped__rank">' + esc(d.rank) + '</div>' +
+    '<div class="wrapped__foot">pulse for claude code · all data local</div>';
+  document.getElementById('wrapped').hidden = false;
+}
+
+// draw the same card onto a canvas and download it as a PNG
+function saveWrappedPng() {
+  var s = state.stats;
+  if (!s) return;
+  var d = wrappedData(s);
+  var W = 1080, H = 1350;
+  var cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  var ctx = cv.getContext('2d');
+  ctx.fillStyle = '#1f1e1b'; ctx.fillRect(0, 0, W, H);
+  // subtle top glow
+  var g = ctx.createLinearGradient(0, 0, 0, 420);
+  g.addColorStop(0, 'rgba(217,119,87,0.22)'); g.addColorStop(1, 'rgba(217,119,87,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, 420);
+  // heartbeat mark
+  ctx.strokeStyle = '#d97757'; ctx.lineWidth = 10; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.beginPath();
+  var hb = [[70, 150], [170, 150], [210, 100], [265, 205], [305, 150], [400, 150]];
+  hb.forEach(function (p, i) { i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); });
+  ctx.stroke();
+  var sans = '-apple-system, "Segoe UI", Roboto, Helvetica, sans-serif';
+  ctx.fillStyle = '#eceae1';
+  ctx.font = '600 44px ' + sans;
+  ctx.fillText('PULSE WRAPPED', 70, 260);
+  ctx.fillStyle = '#9a988e';
+  ctx.font = '400 34px ' + sans;
+  ctx.fillText(d.range, 70, 315);
+  // the big number
+  ctx.fillStyle = '#d97757';
+  ctx.font = '700 190px ' + sans;
+  ctx.fillText(fmtTokens(d.tokens), 62, 540);
+  ctx.fillStyle = '#9a988e';
+  ctx.font = '400 40px ' + sans;
+  ctx.fillText('tokens this week', 70, 605);
+  // rows
+  var rows = [
+    ['API-equivalent burned', fmtCost(d.cost)],
+    ['days at the keyboard', d.days + ' of 7'],
+    d.best ? ['biggest day', d.best.date.slice(5).replace('-', '/') + ' · ' + fmtTokens(d.best.tokens)] : null,
+    d.topProj ? ['obsession of the week', d.topProj] : null,
+    ['streak', d.streak + ' days'],
+    ['achievements', d.achv + ' / ' + d.achvTotal],
+  ].filter(Boolean);
+  var y = 710;
+  rows.forEach(function (r) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.09)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(70, y - 46); ctx.lineTo(W - 70, y - 46); ctx.stroke();
+    ctx.fillStyle = '#9a988e'; ctx.font = '400 34px ' + sans;
+    ctx.fillText(r[0], 70, y);
+    ctx.fillStyle = '#eceae1'; ctx.font = '600 36px ' + sans;
+    var tw = ctx.measureText(r[1]).width;
+    ctx.fillText(r[1], W - 70 - tw, y);
+    y += 88;
+  });
+  // rank
+  ctx.fillStyle = '#d97757'; ctx.font = '700 72px ' + sans;
+  ctx.fillText(d.rank, 70, H - 130);
+  ctx.fillStyle = '#6f6d64'; ctx.font = '400 30px ' + sans;
+  ctx.fillText('pulse for claude code · all data local', 70, H - 70);
+  var a = document.createElement('a');
+  a.download = 'pulse-wrapped.png';
+  a.href = cv.toDataURL('image/png');
+  a.click();
+}
+
+document.addEventListener('click', function (e) {
+  if (e.target.closest('#wrapped-open')) { openWrapped(); return; }
+  if (e.target.closest('#wrapped-save')) { saveWrappedPng(); return; }
+  if (e.target.closest('#wrapped-close')) { document.getElementById('wrapped').hidden = true; return; }
+  var w = document.getElementById('wrapped');
+  if (w && !w.hidden && e.target === w) w.hidden = true;
+});
 
 // ---------- data: SSE with polling fallback ----------
 function applyStats(data) { state.stats = data; render(); }

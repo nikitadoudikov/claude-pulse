@@ -34,6 +34,7 @@ function listJsonl() {
 
 function projectName(cwd) {
   if (!cwd) return 'unknown';
+  if (cwd === os.homedir()) return 'home';
   return path.basename(cwd) || cwd;
 }
 
@@ -301,9 +302,10 @@ function scan(config, nowMs, calibrateAt) {
   }
   const hourlyBase = now - 24 * 3600 * 1000;
 
-  // daily: last 30 days
+  // daily: last 13 weeks (the UI charts slice what they need; the profile
+  // heatmap wants the full quarter)
   const daily = {};
-  for (let i = 29; i >= 0; i--) {
+  for (let i = 90; i >= 0; i--) {
     const d = new Date(now - i * 86400 * 1000);
     d.setHours(0, 0, 0, 0);
     const key = dateKey(d.getTime());
