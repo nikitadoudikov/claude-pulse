@@ -27,6 +27,13 @@ Requires Node 18+. Run it with no install:
 npx pulse-for-claude-code
 ```
 
+Or install it globally, which puts the `claude-pulse` command on your PATH:
+
+```bash
+npm install -g pulse-for-claude-code
+claude-pulse
+```
+
 Or clone it:
 
 ```bash
@@ -42,6 +49,11 @@ re-run):
 ```bash
 claude-pulse install-hooks   # adds the hooks to ~/.claude/settings.json
 ```
+
+Every `claude-pulse <command>` in this README assumes the global install. If
+you use `npx` instead, the command is `npx pulse-for-claude-code <command>`,
+e.g. `npx pulse-for-claude-code install-hooks`. From a clone it is
+`node bin/cli.js <command>`.
 
 Then restart Claude Code, and you are set. Other options:
 
