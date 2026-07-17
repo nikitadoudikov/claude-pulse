@@ -97,6 +97,13 @@ function parseFile(fp) {
 
     if (o.type === 'turn_context' && p.model) { model = p.model; if (s) s.model = p.model; }
 
+    // no session_index.jsonl (or no thread_name yet): title from the first
+    // typed user message, same last-resort rule as the Claude engine.
+    if (o.type === 'event_msg' && p.type === 'user_message' && s && !s.title && typeof p.message === 'string') {
+      const txt = p.message.replace(/\s+/g, ' ').trim();
+      if (txt && txt[0] !== '<') s.title = txt.slice(0, 80).trim();
+    }
+
     if (o.type === 'event_msg' && p.type === 'token_count') {
       const info = p.info || {};
       const last = info.last_token_usage || {};

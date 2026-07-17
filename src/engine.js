@@ -52,6 +52,7 @@ function blankSession(sid) {
   return {
     sid,
     title: null,
+    fallbackTitle: null,
     lastPrompt: null,
     cwd: null,
     project: null,
@@ -100,6 +101,14 @@ function parseFile(fp) {
     if (type === 'user' && s && !o.isSidechain) {
       s.userMsgs++;
       if (o.promptSource === 'typed' && tsMs) s.promptTimes.push(tsMs);
+      // newer Claude Code builds no longer write the ai-title event (#4), so
+      // keep the first real typed prompt around as a title of last resort.
+      if (!s.fallbackTitle && o.promptSource === 'typed') {
+        const txt = userText((o.message || {}).content);
+        if (txt && !txt.startsWith('<') && !txt.startsWith('Caveat')) {
+          s.fallbackTitle = txt.replace(/\s+/g, ' ').slice(0, 80).trim();
+        }
+      }
     }
 
     if (type === 'assistant') {
@@ -222,6 +231,7 @@ function scan(config, nowMs, calibrateAt) {
       cur.toolCalls += fs0.toolCalls;
       cur.errors += fs0.errors;
       cur.title = fs0.title || cur.title;
+      cur.fallbackTitle = fs0.fallbackTitle || cur.fallbackTitle;
       cur.lastPrompt = fs0.lastPrompt || cur.lastPrompt;
       cur.cwd = fs0.cwd || cur.cwd;
       cur.project = fs0.project || cur.project;
@@ -242,7 +252,11 @@ function scan(config, nowMs, calibrateAt) {
       if (!d) continue;
       for (const e of d.tokens) allTokens.push(e);
       for (const cs of Object.keys(d.sessions)) {
-        if (!sessions[cs]) sessions[cs] = Object.assign({}, d.sessions[cs]);
+        const c = d.sessions[cs];
+        // forked rollouts open with a shell session_meta whose events all land
+        // on the parent sid; skip these empty shells instead of listing them
+        if (!c.userMsgs && !c.assistantMsgs) continue;
+        if (!sessions[cs]) sessions[cs] = Object.assign({}, c);
       }
     }
   }
@@ -356,7 +370,7 @@ function scan(config, nowMs, calibrateAt) {
     const tot = bySid[s.sid] || { tokens: 0, cost: 0 };
     return {
       sid: s.sid,
-      title: s.title || '(untitled session)',
+      title: s.title || s.fallbackTitle || '(untitled session)',
       project: s.project || 'unknown',
       cwd: s.cwd,
       model: modelKey(s.model),
@@ -581,6 +595,9 @@ function sessionDigest(sid, config) {
 
     if (o.type === 'user' && !o.isSidechain && o.promptSource === 'typed') {
       const txt = userText((o.message || {}).content);
+      if (!meta.title && txt && !txt.startsWith('<') && !txt.startsWith('Caveat')) {
+        meta.title = txt.replace(/\s+/g, ' ').slice(0, 80).trim();
+      }
       cur = { index: turns.length + 1, t: t, prompt: cap(txt, 2000), text: '', actions: [], tokens: 0, cost: 0, context: 0 };
       turns.push(cur);
     } else if (o.type === 'assistant') {
