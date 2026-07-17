@@ -26,7 +26,7 @@ function listJsonl() {
     let files;
     try { files = fs.readdirSync(p); } catch (e) { continue; }
     for (const f of files) {
-      if (f.endsWith('.jsonl')) out.push(path.join(p, f));
+      if (f.endsWith('.jsonl')) out.push({ path: path.join(p, f), observer: /^observer\b/i.test(f) });
     }
   }
   return out;
@@ -214,13 +214,14 @@ function scan(config, nowMs, calibrateAt) {
   const allTools = [];
   const sessions = {};
 
-  for (const fp of files) {
-    const d = getFileData(fp);
+  for (const f of files) {
+    const d = getFileData(f.path);
     if (!d) continue;
     for (const e of d.tokens) allTokens.push(e);
     for (const t of d.tools) allTools.push(t);
     for (const sid of Object.keys(d.sessions)) {
       const fs0 = d.sessions[sid];
+      if (f.observer) fs0.observer = true;
       const cur = sessions[sid];
       if (!cur) { sessions[sid] = Object.assign({}, fs0); continue; }
       // merge a session that spans multiple files
@@ -393,6 +394,7 @@ function scan(config, nowMs, calibrateAt) {
       cwd: s.cwd,
       model: modelKey(s.model),
       source: s.source || 'claude',
+      observer: !!s.observer,
       lastPrompt: s.lastPrompt,
       firstT: s.firstT,
       lastT: s.lastT,
@@ -582,7 +584,7 @@ function cap(s, n) {
 
 function sessionDigest(sid, config) {
   const pricing = config && config.pricing;
-  const all = listJsonl();
+  const all = listJsonl().map(f => f.path);
   let files = all.filter(fp => path.basename(fp) === sid + '.jsonl');
   if (!files.length) files = all; // fallback: scan everything for this sid
 

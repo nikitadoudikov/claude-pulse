@@ -26,7 +26,9 @@ function listSessions() {
       const fp = path.join(p, f);
       let st;
       try { st = fs.statSync(fp); } catch (e) { continue; }
-      out.push({ sid: f.replace(/\.jsonl$/, ''), file: fp, mtimeMs: st.mtimeMs, size: st.size });
+      // newer Claude Code builds write background "observer" transcripts next
+      // to real sessions; tag them so the UI can hide them by default
+      out.push({ sid: f.replace(/\.jsonl$/, ''), file: fp, mtimeMs: st.mtimeMs, size: st.size, observer: /^observer\b/i.test(f) });
     }
   }
   out.sort((a, b) => b.mtimeMs - a.mtimeMs);

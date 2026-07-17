@@ -155,6 +155,10 @@
         <div class="search-row">
           <input class="search" id="sessions-search" type="search" placeholder="search every session for lost info…" autocomplete="off" />
           <select class="search-project" id="search-project" hidden></select>
+          <select class="search-project" id="sessions-jump" title="alphabetical list of every session"></select>
+          <label class="obs-toggle" title="background transcripts some Claude Code builds write; usually noise" hidden>
+            <input type="checkbox" id="sessions-observers" /> observers
+          </label>
         </div>
         <div class="table" id="sessions-table"></div>
         <div id="search-results" hidden></div>

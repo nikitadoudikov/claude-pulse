@@ -16,7 +16,8 @@ function fmtCost(n) {
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function relTime(ms) {
-  if (!ms) return '';
+  if (typeof ms === 'string') ms = Date.parse(ms); // ISO strings must not become "NaNd ago"
+  if (!ms || !isFinite(ms)) return '';
   var s = Math.max(0, Math.round((Date.now() - ms) / 1000));
   if (s < 60) return s + 's ago';
   var m = Math.round(s / 60);
@@ -147,12 +148,42 @@ document.addEventListener('click', function (e) {
 });
 
 // ---------- sessions ----------
+function visibleSessions(s) {
+  var list = s.sessions || [];
+  if (!state.showObservers) list = list.filter(function (x) { return !x.observer; });
+  return list;
+}
+
+function renderSessionJump(list) {
+  var sel = document.getElementById('sessions-jump');
+  if (!sel) return;
+  var sorted = list.slice().sort(function (a, b) {
+    return (a.title + a.project).toLowerCase().localeCompare((b.title + b.project).toLowerCase());
+  });
+  var opts = '<option value="">jump to a session…</option>' + sorted.map(function (x) {
+    return '<option value="' + esc(x.sid) + '">' + esc(x.title.slice(0, 60)) + ' — ' + esc(x.project) + '</option>';
+  }).join('');
+  if (sel.getAttribute('data-n') !== String(sorted.length)) { // don't clobber an open dropdown
+    sel.innerHTML = opts;
+    sel.setAttribute('data-n', String(sorted.length));
+  }
+}
+
 function renderSessions() {
   var s = state.stats;
-  document.getElementById('sessions-count').textContent = s.totals.sessions + ' total';
+  var list = visibleSessions(s);
+  var hiddenN = (s.sessions || []).length - list.length;
+  document.getElementById('sessions-count').textContent =
+    s.totals.sessions + ' total' + (hiddenN && !state.showObservers ? ' · ' + hiddenN + ' observer hidden' : '');
+  var ob = document.getElementById('sessions-observers');
+  if (ob) {
+    ob.parentElement.hidden = !(s.sessions || []).some(function (x) { return x.observer; });
+    ob.checked = !!state.showObservers;
+  }
+  renderSessionJump(list);
   var queued = {};
   (s.schedule || []).forEach(function (it) { if (it.status === 'pending') queued[it.sid] = 1; });
-  var rows = s.sessions.map(function (x) {
+  var rows = list.map(function (x) {
     return '<div class="trow trow--link" data-sid="' + esc(x.sid) + '">' +
       '<span class="dot ' + (x.active ? 'is-on' : '') + '"></span>' +
       '<span class="trow__title">' + esc(x.title) + (queued[x.sid] ? ' <span class="chip chip--sched" title="a scheduled message is queued">⏰</span>' : '') + ' <small>' + esc(x.project) + '</small></span>' +
@@ -919,6 +950,7 @@ function renderSearch() {
   var q = state.searchQuery || '';
   var sel = projEl ? projEl.value : '';
   var list = (state.searchResults || []).filter(function (x) { return !sel || x.project === sel; });
+  if (!state.showObservers) list = list.filter(function (x) { return !x.observer; });
   var rows = list.map(function (x) {
     var snips = (x.snippets || []).map(function (sn) {
       return '<div class="sr__snip"><span class="sr__who">' + esc(sn.role === 'user' ? 'you' : 'claude') + '</span> ' + hl(sn.text, q) + '</div>';
@@ -1292,6 +1324,20 @@ document.getElementById('metric-toggle').addEventListener('click', function () {
 // redraw charts on resize
 var rt;
 window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(function () { render(); if (state.tab === 'session') renderSession(); }, 150); });
+
+// ---------- observer toggle + session jump dropdown ----------
+try { state.showObservers = localStorage.getItem('pulse-observers') === '1'; } catch (e) { state.showObservers = false; }
+var obEl = document.getElementById('sessions-observers');
+if (obEl) obEl.addEventListener('change', function () {
+  state.showObservers = obEl.checked;
+  try { localStorage.setItem('pulse-observers', state.showObservers ? '1' : '0'); } catch (e) {}
+  renderSessions();
+  if (state.searchResults) renderSearch();
+});
+var jumpEl = document.getElementById('sessions-jump');
+if (jumpEl) jumpEl.addEventListener('change', function () {
+  if (jumpEl.value) { openSession(jumpEl.value); jumpEl.value = ''; }
+});
 
 // ---------- settings popover ----------
 (function () {

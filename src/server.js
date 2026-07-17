@@ -313,11 +313,19 @@ function createServer() {
       } catch (e) { res.writeHead(500); return res.end('error'); }
     }
     if (url === '/api/export-all') {
+      // plain markdown by default: a .md.gz confused archive tools that guessed
+      // a tar inside (#8). Localhost bandwidth is free; ?gz=1 keeps the old form.
+      const q = new URLSearchParams(req.url.split('?')[1] || '');
       try {
-        const gz = require('zlib').gzipSync(transcript.combinedMarkdown({}));
-        res.writeHead(200, { 'Content-Type': 'application/gzip', 'Cache-Control': 'no-store',
-          'Content-Disposition': 'attachment; filename="pulse-history.md.gz"' });
-        return res.end(gz);
+        const md = transcript.combinedMarkdown({});
+        if (q.get('gz') === '1') {
+          res.writeHead(200, { 'Content-Type': 'application/gzip', 'Cache-Control': 'no-store',
+            'Content-Disposition': 'attachment; filename="pulse-history.md.gz"' });
+          return res.end(require('zlib').gzipSync(md));
+        }
+        res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8', 'Cache-Control': 'no-store',
+          'Content-Disposition': 'attachment; filename="pulse-history.md"' });
+        return res.end(md);
       } catch (e) { res.writeHead(500); return res.end('error'); }
     }
 

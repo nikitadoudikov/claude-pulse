@@ -36,7 +36,9 @@ function searchSessions(query, opts = {}) {
       if (snippets.length < 3) { const sn = snippetAround(b.text, q); if (sn) snippets.push({ role: b.role, text: sn }); }
     }
     if (!count) continue;
-    out.push({ sid: meta.sid, title: meta.title, project: meta.project, lastT: meta.lastT, count, snippets });
+    // meta.lastT is the raw ISO string from the log; the UI wants epoch ms
+    const lastMs = meta.lastT ? Date.parse(meta.lastT) || null : null;
+    out.push({ sid: meta.sid, title: meta.title, project: meta.project, lastT: lastMs, observer: !!s.observer, count, snippets });
     if (out.length >= limit) break;
   }
   return out;

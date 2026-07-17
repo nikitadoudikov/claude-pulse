@@ -717,3 +717,8 @@ body.office-mode .office__sub { color: #b7b5ab; }
 .achv__icon { font-size: 22px; }
 .achv__name { font-weight: 600; font-size: 13px; }
 .achv__desc { font-size: 11px; color: var(--faint); }
+
+/* ===== Sessions: observer toggle + jump dropdown ===== */
+.obs-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; cursor: pointer; }
+.obs-toggle input { accent-color: var(--accent); }
+#sessions-jump { max-width: 260px; }
