@@ -202,6 +202,14 @@ function createServer() {
         res.end(buf);
       });
     }
+    if (url === '/api/notch-open' && req.method === 'POST') {
+      // spawns a local browser window, so localhost only
+      const remote = req.socket.remoteAddress || '';
+      const isLocal = remote.indexOf('127.0.0.1') !== -1 || remote === '::1' || remote.indexOf('::ffff:127.0.0.1') !== -1;
+      if (!isLocal) { res.writeHead(403); return res.end('forbidden'); }
+      const r = require('./notchlaunch').launch(req.socket.localPort);
+      return sendJson(res, r);
+    }
     if (url === '/notch') {
       return fs.readFile(path.join(PUBLIC_DIR, 'notch.html'), (err, buf) => {
         if (err) { res.writeHead(404); return res.end('not found'); }

@@ -90,38 +90,20 @@ function recover(rest) {
 }
 
 // A notch-style strip: a small chromeless browser window pinned top-center,
-// showing state + approvals. Chrome's app mode gives us the chromeless window;
-// true always-on-top would need a native app, this is the zero-dep version.
+// showing state + approvals. Shared logic lives in src/notchlaunch.js so the
+// dashboard button can do the same thing.
 function openNotch(args) {
-  const { execSync, spawn } = require('child_process');
   const daemon = require('../src/daemon');
   const running = daemon.running();
   const port = (running && running.port) || args.port || 4317;
-  const url = `http://127.0.0.1:${port}/notch`;
-  const W = 470, H = 190;
-  let x = 500;
-  if (process.platform === 'darwin') {
-    try {
-      const b = execSync("osascript -e 'tell application \"Finder\" to get bounds of window of desktop'", { timeout: 3000 })
-        .toString().trim().split(',').map((n) => parseInt(n, 10));
-      if (b[2]) x = Math.round((b[2] - W) / 2);
-    } catch (e) {}
+  const r = require('../src/notchlaunch').launch(port);
+  if (r.ok) {
+    console.log(`notch opened via ${r.via} at ${r.url}`);
+    console.log('tip: drag it under the camera notch once; Chrome remembers the spot');
+  } else {
+    openBrowser(r.url);
+    console.log('no Chromium browser found for the chromeless window; opened as a normal tab: ' + r.url);
   }
-  const chromes = process.platform === 'darwin'
-    ? ['Google Chrome', 'Chromium', 'Brave Browser', 'Microsoft Edge', 'Arc']
-    : [];
-  for (const app of chromes) {
-    try {
-      const child = spawn('open', ['-na', app, '--args', '--app=' + url,
-        `--window-size=${W},${H}`, `--window-position=${x},0`], { stdio: 'ignore', detached: true });
-      child.unref();
-      console.log(`notch opened via ${app} at ${url}`);
-      console.log('tip: drag it under the camera notch once; Chrome remembers the spot');
-      return;
-    } catch (e) {}
-  }
-  openBrowser(url);
-  console.log('no Chromium browser found for the chromeless window; opened as a normal tab: ' + url);
 }
 
 function installHooks() {

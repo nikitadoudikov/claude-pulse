@@ -1011,6 +1011,19 @@ document.getElementById('appr-toggle').addEventListener('click', function () {
     .then(function () { return fetchStats(); }).then(function (r) { return r.json(); }).then(applyStats).catch(function () {});
 });
 
+// ---------- notch from the dashboard ----------
+var notchBtn = document.getElementById('notch-open');
+if (notchBtn) notchBtn.addEventListener('click', function () {
+  fetch('/api/notch-open', { method: 'POST' }).then(function (r) { return r.json(); }).then(function (d) {
+    if (!d.ok) {
+      // no Chromium-based browser to spawn: a plain popup is the fallback
+      window.open('/notch', 'pulse-notch', 'width=470,height=190,top=0,left=' + Math.round((screen.width - 470) / 2));
+    }
+  }).catch(function () {
+    window.open('/notch', 'pulse-notch', 'width=470,height=190,top=0');
+  });
+});
+
 // ---------- fullscreen ----------
 document.getElementById('fs-toggle').addEventListener('click', function () {
   try {
