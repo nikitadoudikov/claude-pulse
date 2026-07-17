@@ -24,7 +24,7 @@ function blankSession(sid) {
     sid, title: null, lastPrompt: null, cwd: null, project: null, model: 'gpt',
     firstT: null, lastT: null, userMsgs: 0, assistantMsgs: 0, toolCalls: 0,
     errors: 0, promptTimes: [], lastStopReason: null, lastAssistantT: null,
-    lastWasError: false, source: 'codex',
+    lastWasError: false, source: 'codex', ctxWindow: null,
   };
 }
 
@@ -97,11 +97,38 @@ function parseFile(fp) {
 
     if (o.type === 'turn_context' && p.model) { model = p.model; if (s) s.model = p.model; }
 
-    // no session_index.jsonl (or no thread_name yet): title from the first
-    // typed user message, same last-resort rule as the Claude engine.
-    if (o.type === 'event_msg' && p.type === 'user_message' && s && !s.title && typeof p.message === 'string') {
+    // the model's real context window, reported at the start of every task
+    if (o.type === 'event_msg' && p.type === 'task_started' && s && p.model_context_window) {
+      s.ctxWindow = p.model_context_window;
+    }
+
+    // a user_message event is the actual typed prompt (response_items with
+    // role=user also carry replayed history and environment XML, so they are
+    // useless as counters). Count turns and take the title from here.
+    if (o.type === 'event_msg' && p.type === 'user_message' && s && typeof p.message === 'string') {
+      s.userMsgs++;
+      if (tsMs) s.promptTimes.push(tsMs);
       const txt = p.message.replace(/\s+/g, ' ').trim();
-      if (txt && txt[0] !== '<') s.title = txt.slice(0, 80).trim();
+      if (!s.title && txt && txt[0] !== '<') s.title = txt.slice(0, 80).trim();
+      if (txt) s.lastPrompt = txt.slice(0, 200);
+    }
+
+    // tool calls, for the activity feed and per-session counters. Forked
+    // rollouts replay the parent's items, so each entry carries a stable key
+    // (call_id/id) and the engine dedupes across files.
+    if (o.type === 'response_item' && (p.type === 'function_call' || p.type === 'custom_tool_call' || p.type === 'web_search_call')) {
+      if (s) s.toolCalls++;
+      let hint = '';
+      if (p.arguments) {
+        try { const a = JSON.parse(p.arguments); hint = a.cmd || a.command || a.path || a.file_path || a.query || ''; } catch (e) {}
+      }
+      if (!hint && p.action && p.action.query) hint = p.action.query;
+      if (Array.isArray(hint)) hint = hint.join(' ');
+      data.tools.push({
+        t: tsMs, sid, source: 'codex', key: p.call_id || p.id || null,
+        name: p.type === 'web_search_call' ? 'WebSearch' : (p.name || 'tool'),
+        hint: String(hint).replace(/\s+/g, ' ').trim().slice(0, 90),
+      });
     }
 
     if (o.type === 'event_msg' && p.type === 'token_count') {
@@ -119,8 +146,6 @@ function parseFile(fp) {
       }
     }
 
-    const role = p.role || (p.message && p.message.role);
-    if (role === 'user' && s) { s.userMsgs++; if (tsMs) s.promptTimes.push(tsMs); }
   }
 
   return data;

@@ -247,16 +247,27 @@ function scan(config, nowMs, calibrateAt) {
 
   // fold in OpenAI Codex CLI sessions too (set "codex": false in config to disable)
   if (config.codex !== false) {
+    const codexToolSeen = new Set();
     for (const fp of codex.listCodexFiles()) {
       const d = getCodexFileData(fp);
       if (!d) continue;
       for (const e of d.tokens) allTokens.push(e);
+      for (const t of d.tools) {
+        // forked rollouts replay the parent's tool calls; call ids are stable
+        if (t.key) { if (codexToolSeen.has(t.key)) continue; codexToolSeen.add(t.key); }
+        allTools.push(t);
+      }
       for (const cs of Object.keys(d.sessions)) {
         const c = d.sessions[cs];
         // forked rollouts open with a shell session_meta whose events all land
         // on the parent sid; skip these empty shells instead of listing them
         if (!c.userMsgs && !c.assistantMsgs) continue;
-        if (!sessions[cs]) sessions[cs] = Object.assign({}, c);
+        const cur = sessions[cs];
+        // the same sid can appear in several rollout files (fork replays);
+        // keep whichever record saw the most of the conversation
+        if (!cur || (cur.source === 'codex' && (c.userMsgs + c.assistantMsgs) > (cur.userMsgs + cur.assistantMsgs))) {
+          sessions[cs] = Object.assign({}, c);
+        }
       }
     }
   }
@@ -352,6 +363,13 @@ function scan(config, nowMs, calibrateAt) {
   function contextFor(sid) {
     const e = latestUsageBySid[sid];
     const used = e ? (e.inp + e.cwr + e.crd) : 0;
+    // Codex reports the model's real context window per task; trust it over
+    // the 200k/1M guessing that Claude sessions need.
+    const sess = sessions[sid];
+    if (sess && sess.ctxWindow) {
+      const cw = sess.ctxWindow;
+      return { used, limit: cw, percent: cw ? Math.min(100, Math.round((used / cw) * 100)) : 0 };
+    }
     const peak = maxCtxBySid[sid] || used;
     const limit = limitFor(peak, config.contextLimit, config.contextLimitExplicit);
     return { used, limit, percent: limit ? Math.min(100, Math.round((used / limit) * 100)) : 0 };

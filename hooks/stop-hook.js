@@ -92,7 +92,9 @@ function desktopNotify(title, body, sound) {
 
   const project = input.cwd ? path.basename(input.cwd) : '';
   // desktop banner always; phone push only if an ntfy topic is set
-  desktopNotify('Claude finished' + (project ? ' · ' + project : ''), 'Your turn', 'Glass');
+  var cfg0 = {};
+  try { cfg0 = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude-pulse.json'), 'utf8')) || {}; } catch (e) {}
+  if (cfg0.desktopNotify !== false) desktopNotify('Claude finished' + (project ? ' · ' + project : ''), 'Your turn', 'Glass');
   await push(ntfySettings(), 'Claude finished' + (project ? ' (' + project + ')' : ''), 'Your turn' + (project ? ' in ' + project : ''), 'white_check_mark');
   process.exit(0);
 })();

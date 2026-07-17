@@ -59,6 +59,7 @@
       <button class="tab" data-tab="usage">Usage</button>
       <button class="tab" data-tab="limits">Limits</button>
       <button class="tab" data-tab="activity">Activity</button>
+      <button class="tab" data-tab="profile">Profile</button>
     </nav>
 
     <div class="topbar__right">
@@ -90,8 +91,24 @@
       <span class="live" id="live-dot" title="live"><span class="live__dot"></span>live</span>
       <button class="icon-btn" id="fs-toggle" title="fullscreen" aria-label="fullscreen">⤢</button>
       <button class="icon-btn" id="theme-toggle" title="toggle theme" aria-label="toggle theme">◑</button>
+      <button class="icon-btn" id="settings-toggle" title="notification settings" aria-label="settings">⚙</button>
     </div>
   </header>
+
+  <div class="settings" id="settings" hidden>
+    <div class="settings__card">
+      <div class="card__head"><span class="card__title">Notifications</span>
+        <button class="settings__close" id="settings-close">✕</button></div>
+      <label class="settings__row"><input type="checkbox" id="set-desktop"> Desktop notifications</label>
+      <div class="settings__group">Phone push (ntfy)</div>
+      <label class="settings__row"><input type="checkbox" id="set-push-approval"> Approval prompts</label>
+      <label class="settings__row"><input type="checkbox" id="set-push-notification"> "Claude needs you"</label>
+      <label class="settings__row"><input type="checkbox" id="set-push-stop"> "Claude finished"</label>
+      <div class="settings__group">Approvals</div>
+      <label class="settings__row"><input type="checkbox" id="set-approvals"> Gate tools until you allow (dashboard / phone)</label>
+      <p class="note settings__note">Per-session <b>auto</b> mode lives on each session card. Push topic setup is on the Overview screen.</p>
+    </div>
+  </div>
 
   <div class="waiting" id="waiting" hidden>
     <span class="waiting__pulse"></span>
@@ -194,6 +211,15 @@
           <div class="office__eta" id="office-eta"></div>
           <div class="office__sub" id="office-sub"></div>
         </div>
+        <div class="music" id="music">
+          <button class="music__btn" id="music-toggle" title="music while Claude works">♪</button>
+          <div class="music__panel" id="music-panel" hidden>
+            <input id="music-url" type="text" placeholder="paste a YouTube link…" autocomplete="off" />
+            <button id="music-play">play</button>
+            <button id="music-stop" hidden>stop</button>
+          </div>
+          <div class="music__frame" id="music-frame" hidden></div>
+        </div>
       </div>
     </section>
 
@@ -209,6 +235,17 @@
         <div class="card__head"><span class="card__title">Recent activity</span><span class="card__hint">last 60 tool calls</span></div>
         <div class="feed" id="activity-feed"></div>
       </div>
+    </section>
+
+    <!-- Profile: rank, records, achievements -->
+    <section class="panel" id="panel-profile">
+      <div class="card profile__hero" id="profile-hero"></div>
+      <div class="cards" id="profile-stats"></div>
+      <div class="card">
+        <div class="card__head"><span class="card__title">Achievements</span><span class="card__hint" id="profile-achv-count"></span></div>
+        <div class="achv" id="profile-achv"></div>
+      </div>
+      <p class="note">Everything here is computed from your local logs only. Streaks look at the last 30 days.</p>
     </section>
   </main>
 

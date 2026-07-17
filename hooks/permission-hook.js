@@ -67,6 +67,22 @@ function summarize(tool, input) {
   var h = input.command || input.file_path || input.path || input.pattern || input.url || input.description || '';
   return String(h).replace(/\s+/g, ' ').trim().slice(0, 200);
 }
+// structured detail for the dashboard card: the full command, the file being
+// touched, the edit itself. Truncated hard so a pending file stays tiny.
+function details(tool, input) {
+  if (!input || typeof input !== 'object') return null;
+  var d = {};
+  if (input.command != null) d.command = String(input.command).slice(0, 600);
+  if (input.description != null) d.description = String(input.description).slice(0, 200);
+  if (input.file_path != null) d.file = String(input.file_path);
+  else if (input.path != null) d.file = String(input.path);
+  if (input.url != null) d.url = String(input.url).slice(0, 300);
+  if (input.old_string != null) d.oldStr = String(input.old_string).slice(0, 400);
+  if (input.new_string != null) d.newStr = String(input.new_string).slice(0, 400);
+  if (input.content != null) d.preview = String(input.content).slice(0, 400);
+  else if (input.prompt != null) d.preview = String(input.prompt).slice(0, 400);
+  return Object.keys(d).length ? d : null;
+}
 function lanIp() {
   try {
     var ifs = os.networkInterfaces();
@@ -157,6 +173,10 @@ function desktopNotify(title, body, sound) {
     var rules = readJson(RULES, { enabled: false, allowAll: false, allowTools: [], denyTools: [], paused: false });
     // pause works independently of remote approvals: stop further actions on tap
     if (rules.paused) return decide('deny', 'Paused from Pulse - resume on your phone or the dashboard to continue');
+    // per-session auto mode (set from the dashboard) answers without asking,
+    // independent of the global approvals toggle
+    var sid0 = input.session_id || input.sessionId || null;
+    if (sid0 && rules.sessions && rules.sessions[sid0] === 'auto') return decide('allow', 'Auto mode (Pulse)');
     if (!rules.enabled) return passthrough();   // remote approvals are opt-in; off by default
     if (rules.denyTools && rules.denyTools.indexOf(tool) !== -1) return decide('deny', 'Denied by Pulse rule');
     if (rules.allowAll || (rules.allowTools && rules.allowTools.indexOf(tool) !== -1)) return decide('allow', 'Allowed by Pulse rule');
@@ -173,10 +193,13 @@ function desktopNotify(title, body, sound) {
       fs.writeFileSync(path.join(PENDING, id + '.json'), JSON.stringify({
         id: id, time: Date.now(), sessionId: input.session_id || input.sessionId || null,
         cwd: cwd, project: project, tool: tool, summary: summary,
+        detail: details(tool, input.tool_input || input.toolInput),
       }));
     } catch (e) { return passthrough(); }
 
-    desktopNotify('Claude needs approval' + (project ? ' · ' + project : ''), tool + (summary ? ': ' + summary.slice(0, 120) : ''), 'Funk');
+    if ((readJson(CONFIG, {}) || {}).desktopNotify !== false) {
+      desktopNotify('Claude needs approval' + (project ? ' · ' + project : ''), tool + (summary ? ': ' + summary.slice(0, 120) : ''), 'Funk');
+    }
     pushNtfy({ _tool: tool, _summary: summary, _id: id, _project: project });
 
     var start = Date.now(), decision = null, deadline = timeoutMs();
@@ -190,6 +213,8 @@ function desktopNotify(title, body, sound) {
       var live = readJson(RULES, { allowAll: false, allowTools: [], denyTools: [] });
       if (live.denyTools && live.denyTools.indexOf(tool) !== -1) { decision = { decision: 'deny' }; break; }
       if (live.allowAll || (live.allowTools && live.allowTools.indexOf(tool) !== -1)) { decision = { decision: 'allow' }; break; }
+      // flipping this session to auto mode releases every waiting card too
+      if (sid0 && live.sessions && live.sessions[sid0] === 'auto') { decision = { decision: 'allow' }; break; }
       await sleep(POLL_MS);
     }
     try { fs.unlinkSync(path.join(PENDING, id + '.json')); } catch (e) {}

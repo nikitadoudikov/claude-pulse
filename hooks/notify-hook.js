@@ -118,7 +118,9 @@ function pushNtfy(n, title, message, tags) {
 
   appendEvent(ev);
   const project = ev.cwd ? path.basename(ev.cwd) : '';
-  desktopNotify('Claude Code' + (project ? ' · ' + project : ''), message);
+  var cfg0 = {};
+  try { cfg0 = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude-pulse.json'), 'utf8')) || {}; } catch (e) {}
+  if (cfg0.desktopNotify !== false) desktopNotify('Claude Code' + (project ? ' · ' + project : ''), message);
   await pushNtfy(ntfySettings(), 'Claude needs you' + (project ? ' (' + project + ')' : ''), message, 'warning');
 
   process.exit(0);

@@ -13,6 +13,7 @@ const snapshots = require('./snapshots');
 const phonepage = require('./phonepage');
 const ntfy = require('./ntfy');
 const limits = require('./limits');
+const scheduler = require('./scheduler');
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 
@@ -81,6 +82,15 @@ function getStats() {
   data.pending = approvals.readPending();
   data.rules = approvals.readRules();
   data.ntfyTopic = config.ntfyTopic || '';
+  // notification preferences + per-session modes, so the UI can render toggles
+  data.prefs = {
+    ntfyPushApproval: config.ntfyPushApproval !== false,
+    ntfyPushNotification: config.ntfyPushNotification !== false,
+    ntfyPushStop: config.ntfyPushStop !== false,
+    desktopNotify: config.desktopNotify !== false,
+  };
+  data.sessionModes = (data.rules && data.rules.sessions) || {};
+  data.schedule = scheduler.readAll().filter((x) => x.status === 'pending' || (x.sentAt || x.at) > now - 86400 * 1000);
   data.limitHit = hit && hit.active ? hit : null;
   // the real ceiling: your 5h spend at the moment you last hit the limit (within
   // 24h). When present, the bars use it instead of the all-time peak guess.
@@ -103,7 +113,7 @@ function serveStatic(req, res) {
     res.writeHead(200, {
       'Content-Type': MIME[path.extname(fp)] || 'application/octet-stream',
       'Cache-Control': 'no-store',
-      'Content-Security-Policy': "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'self'; frame-ancestors 'none'",
+      'Content-Security-Policy': "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-src https://www.youtube-nocookie.com https://www.youtube.com; base-uri 'self'; frame-ancestors 'none'",
       'X-Content-Type-Options': 'nosniff',
     });
     res.end(buf);
@@ -203,6 +213,10 @@ function createServer() {
         if (body && PLANS.indexOf(body.plan) !== -1) partial.plan = body.plan;
         if (body && body.budgets) partial.budgets = body.budgets;
         if (body && body.contextLimit) partial.contextLimit = body.contextLimit;
+        // notification toggles from the settings panel
+        for (const k of ['ntfyPushApproval', 'ntfyPushNotification', 'ntfyPushStop', 'desktopNotify']) {
+          if (body && typeof body[k] === 'boolean') partial[k] = body[k];
+        }
         const cfg = saveConfig(partial);
         statsCache.at = 0;
         sendJson(res, { ok: true, config: cfg });
@@ -313,11 +327,44 @@ function createServer() {
         if (typeof b.enabled === 'boolean') r.enabled = b.enabled;
         if (typeof b.allowAll === 'boolean') r.allowAll = b.allowAll;
         if (b.clearTools) r.allowTools = [];
+        // per-session mode: 'auto' answers every prompt for that session
+        if (b.sid && (b.mode === 'auto' || b.mode === 'off')) {
+          r.sessions = r.sessions || {};
+          if (b.mode === 'auto') r.sessions[b.sid] = 'auto';
+          else delete r.sessions[b.sid];
+        }
         approvals.writeRules(r);
         statsCache.at = 0;
         sendJson(res, { ok: true, rules: r });
       });
     }
+
+    // scheduled prompts: queue "send this text to that session at HH:MM"
+    if (url === '/api/schedule' && req.method === 'POST') {
+      return readBody(req, (b) => {
+        if (!b.sid || !b.at || !b.text) { res.writeHead(400); return res.end('sid, at, text required'); }
+        const at = Number(b.at);
+        if (!isFinite(at) || at < Date.now() - 60000) { res.writeHead(400); return res.end('time is in the past'); }
+        // pick up the session's cwd so claude --resume runs from the right project
+        let cwd = b.cwd || null;
+        try {
+          const st = getStats();
+          const sess = (st.sessions || []).find((s) => s.sid === b.sid);
+          if (sess && sess.cwd) cwd = sess.cwd;
+        } catch (e) {}
+        const it = scheduler.add({ sid: b.sid, at, text: b.text, cwd });
+        statsCache.at = 0;
+        sendJson(res, { ok: true, item: it });
+      });
+    }
+    if (url === '/api/schedule-remove' && req.method === 'POST') {
+      return readBody(req, (b) => {
+        const ok = scheduler.remove(b.id);
+        statsCache.at = 0;
+        sendJson(res, { ok });
+      });
+    }
+    if (url === '/api/schedule') return sendJson(res, { items: scheduler.readAll() });
 
     return serveStatic(req, res);
   });
@@ -353,6 +400,25 @@ function start(opts) {
   // budget alerts to your phone, checked every 30s
   const budgetTimer = setInterval(() => { try { checkBudgets(); } catch (e) {} }, 30000);
   budgetTimer.unref && budgetTimer.unref();
+
+  // scheduled prompts: fire due items, tell the phone when one goes out
+  const schedTimer = setInterval(() => {
+    try {
+      scheduler.runDue((it) => {
+        statsCache.at = 0;
+        const c = loadConfig();
+        if (c.ntfyTopic) {
+          ntfy.push(c.ntfyTopic, {
+            title: 'Pulse: scheduled prompt sent',
+            message: (it.text || '').slice(0, 120),
+            tags: 'alarm_clock', priority: 'default',
+          });
+        }
+        broadcast();
+      });
+    } catch (e) {}
+  }, 15000);
+  schedTimer.unref && schedTimer.unref();
 
   // instant push when the hook writes a notification or a pending approval
   try {

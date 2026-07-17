@@ -114,11 +114,18 @@ function renderActiveSessions(s) {
   var head = '<div class="card__head"><span class="card__title">Active now</span>' +
     '<span class="card__hint">' + list.length + (list.length === 1 ? ' session' : ' sessions') + ' · context per session</span></div>';
   if (!list.length) { el.innerHTML = head + '<div class="empty">no sessions in the last few minutes</div>'; return; }
+  var modes = s.sessionModes || {};
   var rows = list.map(function (x) {
+    var auto = modes[x.sid] === 'auto';
     return '<div class="ctxrow ctxrow--link" data-sid="' + esc(x.sid) + '">' +
       '<div class="ctxrow__top">' +
         '<span class="ctxrow__name"><span class="dot is-on"></span>' + esc(x.title) + ' <small>' + esc(x.project) + '</small></span>' +
-        '<span class="ctxrow__val">' + numSpan(x.contextUsed) + ' / ' + fmtTokens(x.contextLimit) + ' · ' + x.contextPercent + '%</span>' +
+        '<span class="ctxrow__side">' +
+          '<button class="mode-pill' + (auto ? ' is-on' : '') + '" data-mode-sid="' + esc(x.sid) + '" ' +
+            'title="auto mode: Pulse answers every permission prompt for this session with Allow. Use for long unattended runs.">' +
+            (auto ? 'auto ✓' : 'auto') + '</button>' +
+          '<span class="ctxrow__val">' + numSpan(x.contextUsed) + ' / ' + fmtTokens(x.contextLimit) + ' · ' + x.contextPercent + '%</span>' +
+        '</span>' +
       '</div>' +
       barHtml(x.contextPercent, barClass(x.contextPercent)) +
     '</div>';
@@ -126,14 +133,29 @@ function renderActiveSessions(s) {
   el.innerHTML = head + rows;
 }
 
+// toggle a session's auto mode from its pill
+document.addEventListener('click', function (e) {
+  var mp = e.target.closest('.mode-pill');
+  if (!mp) return;
+  e.stopPropagation();
+  var sid = mp.getAttribute('data-mode-sid');
+  var cur = (state.stats && state.stats.sessionModes) || {};
+  var next = cur[sid] === 'auto' ? 'off' : 'auto';
+  if (next === 'auto' && !window.confirm('Auto mode: Pulse will answer every permission prompt in this session with Allow, including shell commands. Turn on?')) return;
+  fetch('/api/rules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sid: sid, mode: next }) })
+    .then(function () { return fetch('/api/stats'); }).then(function (r) { return r.json(); }).then(applyStats).catch(function () {});
+});
+
 // ---------- sessions ----------
 function renderSessions() {
   var s = state.stats;
   document.getElementById('sessions-count').textContent = s.totals.sessions + ' total';
+  var queued = {};
+  (s.schedule || []).forEach(function (it) { if (it.status === 'pending') queued[it.sid] = 1; });
   var rows = s.sessions.map(function (x) {
     return '<div class="trow trow--link" data-sid="' + esc(x.sid) + '">' +
       '<span class="dot ' + (x.active ? 'is-on' : '') + '"></span>' +
-      '<span class="trow__title">' + esc(x.title) + ' <small>' + esc(x.project) + '</small></span>' +
+      '<span class="trow__title">' + esc(x.title) + (queued[x.sid] ? ' <span class="chip chip--sched" title="a scheduled message is queued">⏰</span>' : '') + ' <small>' + esc(x.project) + '</small></span>' +
       '<span class="trow__model">' + (x.source === 'codex' ? '<span class="chip chip--codex">Codex</span> ' : '') + '<span class="chip">' + esc(x.model) + '</span></span>' +
       '<span class="trow__num">' + fmtTokens(x.tokens) + '</span>' +
       '<span class="trow__num trow__cost">' + fmtCost(x.cost) + '</span>' +
@@ -258,6 +280,28 @@ function renderLimits() {
 }
 
 // ---------- approvals: Allow / Allow all / Deny from the dashboard ----------
+// render the tool call the way Claude Code itself shows it: the command in a
+// code block, edits as a mini-diff, the file path underneath
+function apprBody(p) {
+  var d = p.detail || null;
+  if (!d) return p.summary ? '<div class="appr__sum">' + esc(p.summary) + '</div>' : '';
+  var parts = [];
+  if (d.description) parts.push('<div class="appr__desc">' + esc(d.description) + '</div>');
+  if (d.command) parts.push('<pre class="appr__code">' + esc(d.command) + '</pre>');
+  if (d.oldStr != null || d.newStr != null) {
+    parts.push('<div class="appr__diff">' +
+      (d.oldStr ? '<pre class="appr__code appr__code--del">' + esc(d.oldStr) + '</pre>' : '') +
+      (d.newStr ? '<pre class="appr__code appr__code--add">' + esc(d.newStr) + '</pre>' : '') +
+      '</div>');
+  } else if (d.preview) {
+    parts.push('<pre class="appr__code">' + esc(d.preview) + '</pre>');
+  }
+  if (d.file) parts.push('<div class="appr__file">' + esc(d.file) + '</div>');
+  if (d.url) parts.push('<div class="appr__file">' + esc(d.url) + '</div>');
+  if (!parts.length && p.summary) parts.push('<div class="appr__sum">' + esc(p.summary) + '</div>');
+  return parts.join('');
+}
+
 function renderApprovals(s) {
   var box = document.getElementById('approvals');
   if (!box) return;
@@ -270,12 +314,14 @@ function renderApprovals(s) {
   box.innerHTML = pend.map(function (p) {
     return '<div class="appr">' +
       '<div class="appr__info">' +
-        '<span class="appr__tool">' + esc(p.tool) + '</span> wants to run' +
-        (p.project ? ' <span class="appr__proj">' + esc(p.project) + '</span>' : '') +
-        (p.summary ? '<div class="appr__sum">' + esc(p.summary) + '</div>' : '') +
+        '<div class="appr__head">Claude wants to use <span class="appr__tool">' + esc(p.tool) + '</span>' +
+        (p.project ? ' in <span class="appr__proj">' + esc(p.project) + '</span>' : '') +
+        '<span class="appr__time">' + relTime(p.time) + '</span></div>' +
+        apprBody(p) +
       '</div>' +
       '<div class="appr__btns">' +
         '<button class="abtn abtn--allow" data-id="' + esc(p.id) + '" data-dec="allow" data-scope="once">Allow</button>' +
+        '<button class="abtn abtn--tool" data-id="' + esc(p.id) + '" data-dec="allow" data-scope="tool" title="always allow this tool">Always ' + esc(p.tool) + '</button>' +
         '<button class="abtn abtn--all" data-id="' + esc(p.id) + '" data-dec="allow" data-scope="all">Allow all</button>' +
         '<button class="abtn abtn--deny" data-id="' + esc(p.id) + '" data-dec="deny" data-scope="once">Deny</button>' +
       '</div></div>';
@@ -751,6 +797,7 @@ function render() {
   else if (tab === 'usage') renderUsage();
   else if (tab === 'limits') renderLimits();
   else if (tab === 'activity') renderActivity();
+  else if (tab === 'profile') renderProfile();
 
   // live + footer
   var stale = Date.now() - s.generatedAt > 8000 || !state.connected;
@@ -997,7 +1044,9 @@ function renderSession() {
         '<a class="chip chip--accent" style="text-decoration:none" href="/api/export?sid=' + encodeURIComponent(state.sessionSid || '') + '&dl=1">download .md</a>' +
         '<button class="chip chip--accent resume-btn" style="border:0;cursor:pointer">copy resume cmd</button>' +
         '<button class="chip chip--accent handoff-btn" style="border:0;cursor:pointer">copy handoff</button>' +
+        '<button class="chip chip--accent sched-btn" style="border:0;cursor:pointer">schedule message</button>' +
       '</div>' +
+      schedHtml(state.sessionSid) +
       '<div class="card__head" style="margin-top:18px"><span class="card__title">Usage growth per request</span>' +
         '<span class="card__hint">cumulative ' + state.chartMetric + '</span></div>' +
       '<canvas id="session-growth" class="chart" height="140"></canvas>' +
@@ -1020,6 +1069,79 @@ function renderSession() {
   document.getElementById('session-detail').innerHTML = head + '<div class="turns">' + turns + '</div>';
   drawGrowth(document.getElementById('session-growth'), d.turns);
 }
+
+// ---------- scheduled messages ("limit resets at 10:00 -> queue 'continue'") ----------
+function schedHtml(sid) {
+  var items = ((state.stats && state.stats.schedule) || []).filter(function (x) { return x.sid === sid; });
+  var rows = items.map(function (it) {
+    var when = new Date(it.at);
+    var label = String(when.getHours()).padStart(2, '0') + ':' + String(when.getMinutes()).padStart(2, '0') +
+      (when.toDateString() !== new Date().toDateString() ? ' tomorrow' : '');
+    var st = it.status === 'pending' ? '' : ' · ' + it.status;
+    return '<div class="sched__item' + (it.status !== 'pending' ? ' is-done' : '') + '">' +
+      '<span class="sched__when">⏰ ' + esc(label) + st + '</span>' +
+      '<span class="sched__text">' + esc(it.text.slice(0, 120)) + '</span>' +
+      (it.status === 'pending' ? '<button class="sched__del" data-sched-id="' + esc(it.id) + '">✕</button>' : '') +
+    '</div>';
+  }).join('');
+  return '<div class="sched" id="sched-box">' +
+    '<div class="sched__form" id="sched-form" hidden>' +
+      '<input type="time" id="sched-time" class="sched__inp" />' +
+      '<input type="text" id="sched-text" class="sched__inp sched__inp--text" placeholder="continue where you left off" />' +
+      '<button class="abtn abtn--allow" id="sched-queue">queue</button>' +
+      '<span class="sched__hint">runs claude --resume headless at that time; a past time means tomorrow</span>' +
+    '</div>' +
+    (rows ? '<div class="sched__list">' + rows + '</div>' : '') +
+  '</div>';
+}
+
+document.addEventListener('click', function (e) {
+  var sb = e.target.closest('.sched-btn');
+  if (sb) {
+    e.stopPropagation();
+    var f = document.getElementById('sched-form');
+    if (f) {
+      f.hidden = !f.hidden;
+      if (!f.hidden) {
+        var t = document.getElementById('sched-time');
+        if (t && !t.value) {
+          var d = new Date(Date.now() + 10 * 60000);
+          t.value = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+        }
+      }
+    }
+    return;
+  }
+  var q = e.target.closest('#sched-queue');
+  if (q) {
+    e.stopPropagation();
+    var tv = (document.getElementById('sched-time') || {}).value || '';
+    var tx = (document.getElementById('sched-text') || {}).value || '';
+    if (!tv || !tx.trim()) { q.textContent = 'time + text needed'; setTimeout(function () { q.textContent = 'queue'; }, 1500); return; }
+    var hm = tv.split(':');
+    var at = new Date(); at.setHours(+hm[0], +hm[1], 0, 0);
+    if (at.getTime() < Date.now() - 30000) at.setDate(at.getDate() + 1); // past time = tomorrow
+    fetch('/api/schedule', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sid: state.sessionSid, at: at.getTime(), text: tx.trim() }),
+    }).then(function (r) { return r.json(); }).then(function () {
+      return fetch('/api/stats');
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      state.stats = d; renderSession();
+    }).catch(function () {});
+    return;
+  }
+  var del = e.target.closest('.sched__del');
+  if (del) {
+    e.stopPropagation();
+    fetch('/api/schedule-remove', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: del.getAttribute('data-sched-id') }),
+    }).then(function () { return fetch('/api/stats'); }).then(function (r) { return r.json(); }).then(function (d) {
+      state.stats = d; renderSession();
+    }).catch(function () {});
+  }
+});
 
 function drawGrowth(canvas, turns) {
   if (!canvas) return;
@@ -1082,10 +1204,12 @@ document.addEventListener('click', function (e) {
   setTimeout(function () { hb.textContent = 'copy handoff'; }, 1500);
 });
 
-// open a session from any linked row (but not when toggling a number)
+// open a session from any linked row (but not when clicking an inline control)
 document.addEventListener('click', function (e) {
   if (e.target.closest('.resume-btn')) return;
   if (e.target.closest('.num')) return;
+  if (e.target.closest('.mode-pill')) return;
+  if (e.target.closest('.sched-btn') || e.target.closest('#sched-box')) return;
   var row = e.target.closest('[data-sid]');
   if (row) openSession(row.getAttribute('data-sid'));
 });
@@ -1168,6 +1292,190 @@ document.getElementById('metric-toggle').addEventListener('click', function () {
 // redraw charts on resize
 var rt;
 window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(function () { render(); if (state.tab === 'session') renderSession(); }, 150); });
+
+// ---------- settings popover ----------
+(function () {
+  var panel = document.getElementById('settings');
+  var openBtn = document.getElementById('settings-toggle');
+  if (!panel || !openBtn) return;
+  function syncSettings() {
+    var s = state.stats || {};
+    var prefs = s.prefs || {};
+    var rules = s.rules || {};
+    var m = {
+      'set-desktop': prefs.desktopNotify !== false,
+      'set-push-approval': prefs.ntfyPushApproval !== false,
+      'set-push-notification': prefs.ntfyPushNotification !== false,
+      'set-push-stop': prefs.ntfyPushStop !== false,
+      'set-approvals': !!rules.enabled,
+    };
+    for (var id in m) { var el = document.getElementById(id); if (el) el.checked = m[id]; }
+  }
+  openBtn.addEventListener('click', function () { syncSettings(); panel.hidden = !panel.hidden; });
+  document.getElementById('settings-close').addEventListener('click', function () { panel.hidden = true; });
+  panel.addEventListener('click', function (e) { if (e.target === panel) panel.hidden = true; });
+  var MAP = {
+    'set-desktop': 'desktopNotify',
+    'set-push-approval': 'ntfyPushApproval',
+    'set-push-notification': 'ntfyPushNotification',
+    'set-push-stop': 'ntfyPushStop',
+  };
+  panel.addEventListener('change', function (e) {
+    var id = e.target && e.target.id;
+    if (MAP[id]) {
+      var body = {}; body[MAP[id]] = e.target.checked;
+      fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        .then(function () { return fetch('/api/stats'); }).then(function (r) { return r.json(); }).then(applyStats).catch(function () {});
+    } else if (id === 'set-approvals') {
+      fetch('/api/rules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: e.target.checked }) })
+        .then(function () { return fetch('/api/stats'); }).then(function (r) { return r.json(); }).then(applyStats).catch(function () {});
+    }
+  });
+})();
+
+// ---------- office music: paste a YouTube link, it plays in the corner ----------
+function ytEmbed(url) {
+  var s = String(url || '').trim();
+  if (!s) return null;
+  var id = null, list = null;
+  var m;
+  if ((m = s.match(/[?&]list=([\w-]+)/))) list = m[1];
+  if ((m = s.match(/(?:youtu\.be\/|\/watch\?v=|[?&]v=|\/shorts\/|\/embed\/|\/live\/)([\w-]{6,})/))) id = m[1];
+  else if (/^[\w-]{11}$/.test(s)) id = s;
+  if (!id && list) return 'https://www.youtube-nocookie.com/embed/videoseries?list=' + encodeURIComponent(list) + '&autoplay=1';
+  if (!id) return null;
+  var src = 'https://www.youtube-nocookie.com/embed/' + encodeURIComponent(id) + '?autoplay=1';
+  src += list ? '&list=' + encodeURIComponent(list) : '&loop=1&playlist=' + encodeURIComponent(id);
+  return src;
+}
+(function () {
+  var toggle = document.getElementById('music-toggle');
+  if (!toggle) return;
+  var panel = document.getElementById('music-panel');
+  var frame = document.getElementById('music-frame');
+  var urlEl = document.getElementById('music-url');
+  var play = document.getElementById('music-play');
+  var stop = document.getElementById('music-stop');
+  try { urlEl.value = localStorage.getItem('pulse-music') || ''; } catch (e) {}
+  toggle.addEventListener('click', function () { panel.hidden = !panel.hidden; });
+  function start() {
+    var src = ytEmbed(urlEl.value);
+    if (!src) { urlEl.value = ''; urlEl.placeholder = 'that does not look like a YouTube link'; return; }
+    try { localStorage.setItem('pulse-music', urlEl.value.trim()); } catch (e) {}
+    frame.innerHTML = '<iframe width="320" height="180" src="' + src + '" title="music" frameborder="0" ' +
+      'allow="autoplay; encrypted-media" allowfullscreen></iframe>';
+    frame.hidden = false;
+    stop.hidden = false;
+    toggle.classList.add('is-on');
+  }
+  play.addEventListener('click', start);
+  urlEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') start(); });
+  stop.addEventListener('click', function () {
+    frame.innerHTML = ''; frame.hidden = true; stop.hidden = true;
+    toggle.classList.remove('is-on');
+  });
+})();
+
+// ---------- profile: rank, records, achievements (all local) ----------
+var RANK_TIERS = [
+  { at: 0, name: 'Lurker' }, { at: 1e6, name: 'Coder' }, { at: 1e7, name: 'Vibe Coder' },
+  { at: 1e8, name: 'Power Coder' }, { at: 5e8, name: 'God Coder' }, { at: 2e9, name: 'Genius' },
+];
+function streakDays(daily) {
+  var n = 0;
+  for (var i = daily.length - 1; i >= 0; i--) {
+    if (daily[i].tokens > 0) n++;
+    else if (i === daily.length - 1) continue; // today can still be empty
+    else break;
+  }
+  return n;
+}
+function computeAchievements(s) {
+  var total = s.windows.total.tokens || 0;
+  var daily = s.daily || [];
+  var maxDayTok = 0, maxDayCost = 0;
+  daily.forEach(function (d) { if (d.tokens > maxDayTok) maxDayTok = d.tokens; if (d.cost > maxDayCost) maxDayCost = d.cost; });
+  var streak = streakDays(daily);
+  var toolCalls = 0, toolMax = 0;
+  Object.keys(s.byTool || {}).forEach(function (k) { toolCalls += s.byTool[k].count; if (s.byTool[k].count > toolMax) toolMax = s.byTool[k].count; });
+  var models = Object.keys(s.byModel || {}).length;
+  var sess = s.sessions || [];
+  var hasCodex = sess.some(function (x) { return x.source === 'codex'; });
+  var hasClaude = sess.some(function (x) { return x.source !== 'codex'; });
+  var marathon = sess.some(function (x) { return x.firstT && x.lastT && (x.lastT - x.firstT) > 8 * 3600 * 1000; });
+  var deep = sess.some(function (x) { return (x.userMsgs || 0) >= 100; });
+  var night = (s.hourly || []).some(function (h) { return h.tokens > 0 && new Date(h.t).getHours() < 6; });
+  return [
+    { icon: '🔥', name: 'First Pulse', desc: 'any usage at all', ok: total > 0 },
+    { icon: '💬', name: 'Coder', desc: '1M+ tokens all-time', ok: total >= 1e6 },
+    { icon: '⚡', name: 'Vibe Coder', desc: '10M+ tokens all-time', ok: total >= 1e7 },
+    { icon: '🚀', name: 'Power Coder', desc: '100M+ tokens all-time', ok: total >= 1e8 },
+    { icon: '👑', name: 'God Coder', desc: '500M+ tokens all-time', ok: total >= 5e8 },
+    { icon: '🌌', name: 'Genius', desc: '2B+ tokens all-time', ok: total >= 2e9 },
+    { icon: '📅', name: 'Streak ×3', desc: '3 days in a row', ok: streak >= 3 },
+    { icon: '🗓️', name: 'Streak ×7', desc: 'a full week, daily', ok: streak >= 7 },
+    { icon: '🏆', name: 'Streak ×14', desc: 'two weeks, daily', ok: streak >= 14 },
+    { icon: '🔨', name: 'Tool Master', desc: '1,000+ tool calls', ok: toolCalls >= 1000 },
+    { icon: '🪚', name: 'Heavy Machinery', desc: '10,000+ tool calls', ok: toolCalls >= 10000 },
+    { icon: '🌗', name: 'Night Shift', desc: 'tokens burned after midnight', ok: night },
+    { icon: '🏃', name: 'Marathon', desc: 'one session, 8+ hours', ok: marathon },
+    { icon: '🧠', name: 'Deep Focus', desc: '100+ prompts in one session', ok: deep },
+    { icon: '🎭', name: 'Polyglot', desc: '3+ models used', ok: models >= 3 },
+    { icon: '🤝', name: 'Double Agent', desc: 'Claude and Codex in one dashboard', ok: hasCodex && hasClaude },
+    { icon: '💸', name: 'Big Spender', desc: '$100+ API-equivalent in a day', ok: maxDayCost >= 100 },
+    { icon: '🌋', name: 'Volcano Day', desc: '100M+ tokens in a day', ok: maxDayTok >= 1e8 },
+  ];
+}
+function renderProfile() {
+  var s = state.stats;
+  if (!s) return;
+  var total = s.windows.total.tokens || 0;
+  var tierIdx = 0;
+  for (var i = 0; i < RANK_TIERS.length; i++) if (total >= RANK_TIERS[i].at) tierIdx = i;
+  var next = RANK_TIERS[tierIdx + 1] || null;
+  var progress = next ? Math.min(100, Math.round((total - RANK_TIERS[tierIdx].at) / (next.at - RANK_TIERS[tierIdx].at) * 100)) : 100;
+
+  var topTool = '', topToolN = 0;
+  Object.keys(s.byTool || {}).forEach(function (k) { if (s.byTool[k].count > topToolN) { topToolN = s.byTool[k].count; topTool = k; } });
+  var topProj = '', topProjN = 0;
+  Object.keys(s.byProject || {}).forEach(function (k) { if (k !== 'unknown' && s.byProject[k].tokens > topProjN) { topProjN = s.byProject[k].tokens; topProj = k; } });
+  var daily = s.daily || [];
+  var best = null;
+  daily.forEach(function (d) { if (!best || d.tokens > best.tokens) best = d; });
+  var streak = streakDays(daily);
+
+  document.getElementById('profile-hero').innerHTML =
+    '<div class="profile__rank">' + esc(s.rank || RANK_TIERS[tierIdx].name) + '</div>' +
+    '<div class="profile__total">' + numSpan(total) + ' tokens all-time · ' + fmtCost(s.windows.total.cost) + ' API-equivalent</div>' +
+    (next
+      ? '<div class="profile__next">next rank: <b>' + esc(next.name) + '</b> at ' + fmtTokens(next.at) + '</div>' + barHtml(progress, 'is-ok')
+      : '<div class="profile__next">maximum rank reached. touch grass?</div>') +
+    '<div class="profile__like">' +
+      (topProj ? 'most of your energy goes to <b>' + esc(topProj) + '</b>' : '') +
+      (topTool ? (topProj ? ' · ' : '') + 'favourite move: <b>' + esc(topTool) + '</b> ×' + full(topToolN) : '') +
+    '</div>';
+
+  var cards = [
+    { label: 'Sessions', v: full(s.totals.sessions) },
+    { label: 'Tool calls', v: full(Object.keys(s.byTool || {}).reduce(function (n, k) { return n + s.byTool[k].count; }, 0)) },
+    { label: 'Current streak', v: streak + 'd' },
+    { label: 'Best day', v: best ? fmtTokens(best.tokens) : '0' },
+  ];
+  document.getElementById('profile-stats').innerHTML = cards.map(function (c) {
+    return '<div class="stat"><div class="stat__label">' + c.label + '</div><div class="stat__value">' + c.v + '</div></div>';
+  }).join('');
+
+  var ach = computeAchievements(s);
+  var got = ach.filter(function (a) { return a.ok; }).length;
+  document.getElementById('profile-achv-count').textContent = got + ' / ' + ach.length;
+  document.getElementById('profile-achv').innerHTML = ach.map(function (a) {
+    return '<div class="achv__item' + (a.ok ? ' is-got' : '') + '" title="' + esc(a.desc) + '">' +
+      '<span class="achv__icon">' + a.icon + '</span>' +
+      '<span class="achv__name">' + esc(a.name) + '</span>' +
+      '<span class="achv__desc">' + esc(a.desc) + '</span>' +
+    '</div>';
+  }).join('');
+}
 
 // ---------- data: SSE with polling fallback ----------
 function applyStats(data) { state.stats = data; render(); }

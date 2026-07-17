@@ -8,10 +8,12 @@ Claude Code already writes every session to disk. Pulse reads those files (read 
 
 ## Why you might want it
 
-- **Approve from your phone.** A push with working `Allow` / `Allow all` / `Deny` buttons. No Wi-Fi setup, no IP, no open port: it works from anywhere, even on cellular.
+- **Approve from your phone.** A push with working `Allow` / `Allow all` / `Deny` buttons. No Wi-Fi setup, no IP, no open port: it works from anywhere, even on cellular. Approval cards on the dashboard show the actual command or edit, like the terminal does, and each session has an **auto mode** for long unattended runs.
+- **Schedule a message.** Hit the usage limit that resets at 10:00? Open the session, type the time and "continue", walk away — Pulse resumes the session headless at 10:00.
 - **Never lose a session.** One command recovers your last session as a readable transcript, and Pulse auto-snapshots active ones, so a crash or a frozen laptop never costs you context.
 - **See the spend.** Live tokens and API-equivalent cost by hour, day, week, model and project, against budgets you set, with a phone alert when you cross one.
-- **Ambient office.** A full-screen view of a little mascot working, resting, or waiting on you, with a rough ETA. Quietly addictive on a second monitor.
+- **Ambient office.** A full-screen view of a little mascot working, resting, or waiting on you, with a rough ETA. Paste a YouTube link for background music. Quietly addictive on a second monitor.
+- **Profile & achievements.** Your rank, streak, records and a wall of achievements, computed from your own logs. Nothing leaves your machine.
 - **Search everything.** Full-text search across every session on disk, one click to the transcript.
 - **Local and private.** Reads `~/.claude` read only, serves on `127.0.0.1`, zero dependencies, no telemetry.
 
