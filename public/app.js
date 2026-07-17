@@ -1012,16 +1012,16 @@ document.getElementById('appr-toggle').addEventListener('click', function () {
 });
 
 // ---------- notch from the dashboard ----------
+// window.open on a user click is the one way that reliably produces a window
+// in every browser. Spawning Chrome app-mode from the server looks nicer but
+// silently does nothing when Chrome is already running (the second instance
+// hands off and drops the --app flag) - that path stays CLI-only.
 var notchBtn = document.getElementById('notch-open');
 if (notchBtn) notchBtn.addEventListener('click', function () {
-  fetch('/api/notch-open', { method: 'POST' }).then(function (r) { return r.json(); }).then(function (d) {
-    if (!d.ok) {
-      // no Chromium-based browser to spawn: a plain popup is the fallback
-      window.open('/notch', 'pulse-notch', 'width=470,height=190,top=0,left=' + Math.round((screen.width - 470) / 2));
-    }
-  }).catch(function () {
-    window.open('/notch', 'pulse-notch', 'width=470,height=190,top=0');
-  });
+  var left = Math.max(0, Math.round(((screen.width || 1440) - 470) / 2));
+  var w = window.open('/notch', 'pulse-notch',
+    'popup=yes,width=470,height=190,top=0,left=' + left + ',menubar=no,toolbar=no,location=no,status=no');
+  if (w) { try { w.focus(); } catch (e) {} }
 });
 
 // ---------- fullscreen ----------
