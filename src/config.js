@@ -8,7 +8,9 @@ const os = require('os');
 // "API-equivalent" cost for subscription users, who do not pay per token.
 // Override any of these in ~/.claude-pulse.json -> "pricing".
 const PRICING = {
-  opus:    { in: 15, out: 75, cacheWrite: 18.75, cacheRead: 1.5 },
+  fable:   { in: 10, out: 50, cacheWrite: 12.5,  cacheRead: 1 },   // Claude Fable 5 / Mythos 5
+  opus:    { in: 5,  out: 25, cacheWrite: 6.25,  cacheRead: 0.5 }, // Opus 4.5 and later
+  opusLegacy: { in: 15, out: 75, cacheWrite: 18.75, cacheRead: 1.5 }, // Opus 4.1 and older
   sonnet:  { in: 3,  out: 15, cacheWrite: 3.75,  cacheRead: 0.3 },
   haiku:   { in: 1,  out: 5,  cacheWrite: 1.25,  cacheRead: 0.1 },
   gpt:     { in: 1.25, out: 10, cacheWrite: 1.25, cacheRead: 0.125 }, // OpenAI Codex, rough GPT-5 class estimate
@@ -29,7 +31,12 @@ const PLAN_BUDGETS = {
 function priceFor(model, pricing) {
   const p = pricing || PRICING;
   const m = String(model || '').toLowerCase();
-  if (m.includes('opus')) return p.opus;
+  if (p.fable && (m.includes('fable') || m.includes('mythos'))) return p.fable;
+  if (m.includes('opus')) {
+    // Opus 4.5 dropped to $5/$25; 4.1 and older stay at the old $15/$75
+    const legacy = /opus-(3|4-0|4-1)\b/.test(m) || m.includes('claude-3-opus');
+    return (legacy && p.opusLegacy) || p.opus;
+  }
   if (m.includes('sonnet')) return p.sonnet;
   if (m.includes('haiku')) return p.haiku;
   if (p.gpt && (m.includes('gpt') || m.includes('codex'))) return p.gpt;

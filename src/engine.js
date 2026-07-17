@@ -529,6 +529,7 @@ function rankFor(totalTokens) {
 
 function modelKey(model) {
   const m = String(model || '').toLowerCase();
+  if (m.includes('fable') || m.includes('mythos')) return 'fable';
   if (m.includes('opus')) return 'opus';
   if (m.includes('sonnet')) return 'sonnet';
   if (m.includes('haiku')) return 'haiku';
