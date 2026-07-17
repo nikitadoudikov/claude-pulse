@@ -29,23 +29,39 @@ function readStdin() {
     setTimeout(function () { r(d); }, 500);
   });
 }
-function topic() {
-  try { return JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude-pulse.json'), 'utf8')).ntfyTopic || ''; }
-  catch (e) { return ''; }
+// ntfy settings from ~/.claude-pulse.json: topic, server (self-hosted or
+// ntfy.sh), access token for reserved topics, and the per-hook push toggle.
+// A bad ntfyServer URL falls back to ntfy.sh so a typo cannot break the hook.
+function ntfySettings() {
+  var cfg = {};
+  try { cfg = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude-pulse.json'), 'utf8')) || {}; } catch (e) {}
+  var u;
+  try { u = new URL(String(cfg.ntfyServer || 'https://ntfy.sh')); }
+  catch (e) { u = new URL('https://ntfy.sh'); }
+  return {
+    topic: cfg.ntfyTopic || '',
+    token: String(cfg.ntfyToken || ''),
+    mod: u.protocol === 'http:' ? require('http') : https,
+    hostname: u.hostname,
+    port: u.port ? parseInt(u.port, 10) : (u.protocol === 'http:' ? 80 : 443),
+    pushStop: cfg.ntfyPushStop !== false,
+  };
 }
-function push(t, title, msg, tags) {
-  if (!t) return Promise.resolve();
+function push(n, title, msg, tags) {
+  if (!n.topic || !n.pushStop) return Promise.resolve();
   return new Promise(function (res) {
     var data = Buffer.from(msg || '', 'utf8');
-    var req = https.request({
-      method: 'POST', hostname: 'ntfy.sh', path: '/' + encodeURIComponent(t),
-      headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Content-Length': data.length,
-        'Title': String(title || 'Claude Code').replace(/[^\x20-\x7E]/g, ''),
-        'Tags': tags || 'white_check_mark',
-        'Priority': 'default',
-      },
+    var headers = {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Content-Length': data.length,
+      'Title': String(title || 'Claude Code').replace(/[^\x20-\x7E]/g, ''),
+      'Tags': tags || 'white_check_mark',
+      'Priority': 'default',
+    };
+    if (n.token) headers.Authorization = 'Bearer ' + n.token;
+    var req = n.mod.request({
+      method: 'POST', hostname: n.hostname, port: n.port, path: '/' + encodeURIComponent(n.topic),
+      headers: headers,
     }, function (r) { r.on('data', function () {}); r.on('end', res); });
     req.on('error', res);
     req.write(data); req.end();
@@ -77,7 +93,6 @@ function desktopNotify(title, body, sound) {
   const project = input.cwd ? path.basename(input.cwd) : '';
   // desktop banner always; phone push only if an ntfy topic is set
   desktopNotify('Claude finished' + (project ? ' · ' + project : ''), 'Your turn', 'Glass');
-  const t = topic();
-  if (t) await push(t, 'Claude finished' + (project ? ' (' + project + ')' : ''), 'Your turn' + (project ? ' in ' + project : ''), 'white_check_mark');
+  await push(ntfySettings(), 'Claude finished' + (project ? ' (' + project + ')' : ''), 'Your turn' + (project ? ' in ' + project : ''), 'white_check_mark');
   process.exit(0);
 })();

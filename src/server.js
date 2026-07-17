@@ -156,15 +156,26 @@ function createServer() {
     if (url === '/api/test-push') {
       const cfg = loadConfig();
       if (!cfg.ntfyTopic) return sendJson(res, { ok: false, error: 'no-topic' });
-      const rt = 'https://ntfy.sh/' + encodeURIComponent(cfg.ntfyTopic + '-reply');
+      // honor ntfyServer, and embed the token in each button: the phone app
+      // does not attach credentials to "http" actions on its own, so a
+      // reserved reply topic needs it (same treatment as the approval flow).
+      let origin;
+      try { origin = new URL(String(cfg.ntfyServer || 'https://ntfy.sh')).origin; }
+      catch (e) { origin = 'https://ntfy.sh'; }
+      const rt = origin + '/' + encodeURIComponent(cfg.ntfyTopic + '-reply');
+      const acts = [
+        { label: 'Allow', body: 'test|ok|x' },
+        { label: 'Deny', body: 'test|no|x' },
+      ].map((a) => {
+        const act = { action: 'http', label: a.label, url: rt, method: 'POST', body: a.body, clear: true };
+        if (cfg.ntfyToken) act.headers = { Authorization: 'Bearer ' + cfg.ntfyToken };
+        return act;
+      });
       ntfy.push(cfg.ntfyTopic, {
         title: 'Pulse test',
         message: 'If you can see this with Allow / Deny buttons, your phone is connected.',
         tags: 'lock', priority: 'high',
-        actions: [
-          'http, Allow, ' + rt + ', method=POST, body=test|ok|x, clear=true',
-          'http, Deny, ' + rt + ', method=POST, body=test|no|x, clear=true',
-        ].join('; '),
+        actions: JSON.stringify(acts),
       });
       return sendJson(res, { ok: true });
     }

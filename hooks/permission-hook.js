@@ -77,27 +77,54 @@ function lanIp() {
   } catch (e) {}
   return '';
 }
+// ntfy settings from ~/.claude-pulse.json: topic, server (self-hosted or
+// ntfy.sh), access token for reserved topics, and the per-hook push toggle.
+// A bad ntfyServer URL falls back to ntfy.sh so a typo cannot break the hook.
+function ntfySettings() {
+  var cfg = readJson(CONFIG, {}) || {};
+  var u;
+  try { u = new URL(String(cfg.ntfyServer || 'https://ntfy.sh')); }
+  catch (e) { u = new URL('https://ntfy.sh'); }
+  return {
+    topic: cfg.ntfyTopic || '',
+    token: String(cfg.ntfyToken || ''),
+    origin: u.origin,
+    mod: u.protocol === 'http:' ? require('http') : https,
+    hostname: u.hostname,
+    port: u.port ? parseInt(u.port, 10) : (u.protocol === 'http:' ? 80 : 443),
+    pushApproval: cfg.ntfyPushApproval !== false,
+  };
+}
 function pushNtfy(input) {
-  var topic = '';
-  try { topic = (readJson(CONFIG, {}) || {}).ntfyTopic || ''; } catch (e) {}
-  if (!topic) return Promise.resolve();
+  var n = ntfySettings();
+  if (!n.topic || !n.pushApproval) return Promise.resolve();
   var tool = input._tool, summary = input._summary, id = input._id, project = input._project;
-  var rt = 'https://ntfy.sh/' + encodeURIComponent(topic + '-reply');
+  var rt = n.origin + '/' + encodeURIComponent(n.topic + '-reply');
   return new Promise(function (resolve) {
     // the buttons post the answer back through ntfy; Pulse is subscribed to the
     // reply topic, so no LAN, IP or open port is needed. Works anywhere.
+    // JSON Actions format: unambiguous quoting, and lets each button carry an
+    // Authorization header - the phone app does NOT attach credentials to
+    // "http" actions on its own, so a reserved reply topic needs the token
+    // embedded in the action definition.
+    var acts = [
+      { label: 'Allow', body: 'allow|once|' + id },
+      { label: 'Allow all', body: 'allow|all|' + id },
+      { label: 'Deny', body: 'deny|once|' + id },
+    ].map(function (a) {
+      var act = { action: 'http', label: a.label, url: rt, method: 'POST', body: a.body, clear: true };
+      if (n.token) act.headers = { Authorization: 'Bearer ' + n.token };
+      return act;
+    });
     var headers = {
       'Title': ('Allow ' + tool + (project ? ' in ' + project : '')).replace(/[^\x20-\x7E]/g, ''),
       'Tags': 'lock', 'Priority': 'high',
-      'Actions': [
-        'http, Allow, ' + rt + ', method=POST, body=allow|once|' + id + ', clear=true',
-        'http, Allow all, ' + rt + ', method=POST, body=allow|all|' + id + ', clear=true',
-        'http, Deny, ' + rt + ', method=POST, body=deny|once|' + id + ', clear=true',
-      ].join('; '),
+      'Actions': JSON.stringify(acts),
     };
+    if (n.token) headers.Authorization = 'Bearer ' + n.token;
     var data = Buffer.from(String(summary || tool), 'utf8');
     headers['Content-Length'] = data.length;
-    var req = https.request({ method: 'POST', hostname: 'ntfy.sh', path: '/' + encodeURIComponent(topic), headers: headers },
+    var req = n.mod.request({ method: 'POST', hostname: n.hostname, port: n.port, path: '/' + encodeURIComponent(n.topic), headers: headers },
       function (res) { res.on('data', function () {}); res.on('end', resolve); });
     req.on('error', resolve); req.write(data); req.end();
     setTimeout(resolve, 2500);
