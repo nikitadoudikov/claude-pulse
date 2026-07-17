@@ -6,7 +6,7 @@ const { spawn } = require('child_process');
 const { start } = require('../src/server');
 
 const COMMANDS = new Set(['run', 'start', 'stop', 'restart', 'status', 'recover', 'export-all',
-  'install-hooks', 'uninstall-hooks', 'install-service', 'uninstall-service']);
+  'install-hooks', 'uninstall-hooks', 'install-service', 'uninstall-service', 'notch', 'gen-sounds']);
 
 function lanIp() {
   try {
@@ -50,6 +50,8 @@ Commands:
   status              show whether Pulse is running
   recover [n|id]      show + save the last session (lost it after a crash? run this)
   export-all          save every session as one small gzipped markdown file
+  notch               tiny always-visible strip under the MacBook notch (needs Chrome)
+  gen-sounds          generate custom UI sounds with ElevenLabs (needs ELEVENLABS_API_KEY)
   install-hooks       wire the Pulse hooks into ~/.claude/settings.json
   uninstall-hooks     remove the Pulse hooks from ~/.claude/settings.json
   install-service     macOS: start at login and auto-restart if it dies
@@ -85,6 +87,41 @@ function recover(rest) {
   console.log(`full transcript saved: ${r.path}`);
   console.log(`read it in the browser or on your phone: http://127.0.0.1:${port}/transcript?sid=${s.sid}`);
   if (sessions.length > 1) console.log(`a different one? claude-pulse recover 2  (or an id)`);
+}
+
+// A notch-style strip: a small chromeless browser window pinned top-center,
+// showing state + approvals. Chrome's app mode gives us the chromeless window;
+// true always-on-top would need a native app, this is the zero-dep version.
+function openNotch(args) {
+  const { execSync, spawn } = require('child_process');
+  const daemon = require('../src/daemon');
+  const running = daemon.running();
+  const port = (running && running.port) || args.port || 4317;
+  const url = `http://127.0.0.1:${port}/notch`;
+  const W = 470, H = 190;
+  let x = 500;
+  if (process.platform === 'darwin') {
+    try {
+      const b = execSync("osascript -e 'tell application \"Finder\" to get bounds of window of desktop'", { timeout: 3000 })
+        .toString().trim().split(',').map((n) => parseInt(n, 10));
+      if (b[2]) x = Math.round((b[2] - W) / 2);
+    } catch (e) {}
+  }
+  const chromes = process.platform === 'darwin'
+    ? ['Google Chrome', 'Chromium', 'Brave Browser', 'Microsoft Edge', 'Arc']
+    : [];
+  for (const app of chromes) {
+    try {
+      const child = spawn('open', ['-na', app, '--args', '--app=' + url,
+        `--window-size=${W},${H}`, `--window-position=${x},0`], { stdio: 'ignore', detached: true });
+      child.unref();
+      console.log(`notch opened via ${app} at ${url}`);
+      console.log('tip: drag it under the camera notch once; Chrome remembers the spot');
+      return;
+    } catch (e) {}
+  }
+  openBrowser(url);
+  console.log('no Chromium browser found for the chromeless window; opened as a normal tab: ' + url);
 }
 
 function installHooks() {
@@ -157,6 +194,8 @@ async function main() {
     if (cmd === 'status') return daemon.status();
     if (cmd === 'recover') return recover(argv.slice(1));
     if (cmd === 'export-all') return exportAll(argv.slice(1));
+    if (cmd === 'notch') return openNotch(args);
+    if (cmd === 'gen-sounds') return require('../src/gensounds').run();
     if (cmd === 'install-hooks') return installHooks();
     if (cmd === 'uninstall-hooks') return uninstallHooks();
     if (cmd === 'install-service') return daemon.installService({ port: args.port });

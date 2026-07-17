@@ -218,9 +218,13 @@
         <div class="music" id="music">
           <button class="music__btn" id="music-toggle" title="music while Claude works">♪</button>
           <div class="music__panel" id="music-panel" hidden>
-            <input id="music-url" type="text" placeholder="paste a YouTube link…" autocomplete="off" />
-            <button id="music-play">play</button>
-            <button id="music-stop" hidden>stop</button>
+            <div class="music__row">
+              <input id="music-url" type="text" placeholder="paste a YouTube link…" autocomplete="off" />
+              <button id="music-play">play</button>
+              <button id="music-stop" hidden>stop</button>
+            </div>
+            <div class="music__row"><span id="music-presets"></span></div>
+            <div class="music__hint" id="music-hint"></div>
           </div>
           <div class="music__frame" id="music-frame" hidden></div>
         </div>
@@ -274,6 +278,13 @@
   </div>
 
   <div class="tip" id="chart-tip" hidden></div>
+
+  <div class="dayov" id="dayov" hidden>
+    <div class="dayov__card">
+      <button class="settings__close" id="dayov-close" style="float:right">✕</button>
+      <div id="dayov-body"></div>
+    </div>
+  </div>
 
   <div class="wrapped" id="wrapped" hidden>
     <div class="wrapped__card" id="wrapped-card"></div>

@@ -206,14 +206,14 @@ function addToBucket(b, e, pricing) {
   b.count++;
 }
 
-function scan(config, nowMs, calibrateAt) {
+function scan(config, nowMs, calibrateAt, source) {
   const now = nowMs || Date.now();
   const pricing = config.pricing;
 
   const files = listJsonl();
-  const allTokens = [];
-  const allTools = [];
-  const sessions = {};
+  let allTokens = [];
+  let allTools = [];
+  let sessions = {};
 
   for (const f of files) {
     const d = getFileData(f.path);
@@ -272,6 +272,18 @@ function scan(config, nowMs, calibrateAt) {
         }
       }
     }
+  }
+
+  // optional source filter: the Codex dashboard shows Codex numbers, the
+  // Claude dashboard shows Claude numbers, instead of both showing the sum
+  if (source === 'claude' || source === 'codex') {
+    allTokens = allTokens.filter((e) => (e.source || 'claude') === source);
+    allTools = allTools.filter((t) => (t.source || 'claude') === source);
+    const keep = {};
+    for (const sid of Object.keys(sessions)) {
+      if ((sessions[sid].source || 'claude') === source) keep[sid] = sessions[sid];
+    }
+    sessions = keep;
   }
 
   const dayStart = startOfLocalDay(now);
@@ -649,4 +661,58 @@ function sessionDigest(sid, config) {
   return { meta, turns: turns.slice(-120) };
 }
 
-module.exports = { scan, sessionDigest, listJsonl, PROJECTS_DIR };
+// ---- one day, expanded: what actually happened on that date ----
+// Feeds the heatmap click-through: per-session tokens/cost, tool counts.
+function dayDigest(date, config) {
+  const pricing = config && config.pricing;
+  const bySid = {};
+  const byTool = {};
+  const titles = {};
+  let tokens = 0, cost = 0;
+
+  const fold = (d) => {
+    if (!d) return;
+    for (const e of d.tokens) {
+      if (dateKey(e.t) !== date) continue;
+      const t = entryTokens(e), c = entryCost(e, pricing);
+      tokens += t; cost += c;
+      if (e.sid) {
+        const b = bySid[e.sid] || (bySid[e.sid] = { tokens: 0, cost: 0, source: e.source || 'claude' });
+        b.tokens += t; b.cost += c;
+      }
+    }
+    for (const tl of d.tools || []) {
+      if (!tl.t || dateKey(tl.t) !== date || !tl.name) continue;
+      byTool[tl.name] = (byTool[tl.name] || 0) + 1;
+    }
+    for (const sid of Object.keys(d.sessions)) {
+      const s = d.sessions[sid];
+      if (!titles[sid]) titles[sid] = { title: s.title || s.fallbackTitle || null, project: s.project || null };
+      else {
+        if (!titles[sid].title) titles[sid].title = s.title || s.fallbackTitle || null;
+        if (!titles[sid].project) titles[sid].project = s.project || null;
+      }
+    }
+  };
+
+  for (const f of listJsonl()) fold(getFileData(f.path));
+  if (!config || config.codex !== false) for (const fp of codex.listCodexFiles()) fold(getCodexFileData(fp));
+
+  const sessions = Object.keys(bySid)
+    .map((sid) => ({
+      sid,
+      title: (titles[sid] && titles[sid].title) || '(untitled session)',
+      project: (titles[sid] && titles[sid].project) || 'unknown',
+      source: bySid[sid].source,
+      tokens: bySid[sid].tokens,
+      cost: bySid[sid].cost,
+    }))
+    .sort((a, b) => b.tokens - a.tokens);
+  const tools = Object.keys(byTool)
+    .map((name) => ({ name, count: byTool[name] }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+  return { date, tokens, cost, sessions, tools };
+}
+
+module.exports = { scan, sessionDigest, dayDigest, listJsonl, PROJECTS_DIR };

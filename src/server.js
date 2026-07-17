@@ -3,8 +3,9 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { loadConfig, saveConfig, PLAN_BUDGETS } = require('./config');
-const { scan, sessionDigest } = require('./engine');
+const { scan, sessionDigest, dayDigest } = require('./engine');
 const notify = require('./notify');
 const approvals = require('./approvals');
 const transcript = require('./transcript');
@@ -27,6 +28,17 @@ const MIME = {
 };
 
 let statsCache = { at: 0, data: null };
+const filteredCache = {}; // source -> { at, data }
+
+const SOUNDS_DIR = path.join(os.homedir(), '.claude-pulse', 'sounds');
+const SOUND_NAMES = ['done', 'attention', 'error', 'sent'];
+function availableSounds() {
+  const out = [];
+  for (const n of SOUND_NAMES) {
+    try { fs.accessSync(path.join(SOUNDS_DIR, n + '.mp3')); out.push(n); } catch (e) {}
+  }
+  return out;
+}
 const budgetAlerted = {}; // window name -> highest pct threshold already pushed
 
 // Push a phone alert when a rolling-window budget crosses 80% then 100%.
@@ -60,13 +72,18 @@ function checkBudgets() {
   }
 }
 
-function getStats() {
+function getStats(source) {
   const now = Date.now();
-  if (statsCache.data && now - statsCache.at < 1200) return statsCache.data;
+  if (source === 'claude' || source === 'codex') {
+    const c = filteredCache[source];
+    if (c && c.data && now - c.at < 1200 && statsCache.at <= c.at) return c.data;
+  } else if (statsCache.data && now - statsCache.at < 1200) {
+    return statsCache.data;
+  }
 
   const config = loadConfig();
   const hit = limits.latestHit(now);
-  const data = scan(config, now, hit ? hit.hitT : null);
+  const data = scan(config, now, hit ? hit.hitT : null, source);
 
   // strip synthetic / empty model buckets for a clean breakdown
   for (const k of Object.keys(data.byModel)) {
@@ -95,8 +112,11 @@ function getStats() {
   // the real ceiling: your 5h spend at the moment you last hit the limit (within
   // 24h). When present, the bars use it instead of the all-time peak guess.
   data.limitCeiling = data.calCeiling && data.calCeiling > 0 ? data.calCeiling : null;
+  data.sounds = availableSounds();
+  data.source = source || 'all';
 
-  statsCache = { at: now, data };
+  if (source === 'claude' || source === 'codex') filteredCache[source] = { at: now, data };
+  else statsCache = { at: now, data };
   return data;
 }
 
@@ -160,9 +180,35 @@ function handleSse(req, res) {
 function createServer() {
   const server = http.createServer((req, res) => {
     const url = req.url.split('?')[0];
-    if (url === '/api/stats') return sendJson(res, getStats());
+    if (url === '/api/stats') {
+      const q = new URLSearchParams(req.url.split('?')[1] || '');
+      return sendJson(res, getStats(q.get('source')));
+    }
     if (url === '/api/events') return handleSse(req, res);
     if (url === '/api/health') return sendJson(res, { ok: true });
+    if (url === '/api/day') {
+      const q = new URLSearchParams(req.url.split('?')[1] || '');
+      const date = q.get('date') || '';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { res.writeHead(400); return res.end('date=YYYY-MM-DD required'); }
+      try { return sendJson(res, dayDigest(date, loadConfig())); }
+      catch (e) { res.writeHead(500); return res.end('error'); }
+    }
+    if (url.indexOf('/sounds/') === 0) {
+      const name = url.slice('/sounds/'.length).replace(/[^a-z]/g, '');
+      if (SOUND_NAMES.indexOf(name) === -1) { res.writeHead(404); return res.end('not found'); }
+      return fs.readFile(path.join(SOUNDS_DIR, name + '.mp3'), (err, buf) => {
+        if (err) { res.writeHead(404); return res.end('not found'); }
+        res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'max-age=300' });
+        res.end(buf);
+      });
+    }
+    if (url === '/notch') {
+      return fs.readFile(path.join(PUBLIC_DIR, 'notch.html'), (err, buf) => {
+        if (err) { res.writeHead(404); return res.end('not found'); }
+        res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-store' });
+        res.end(buf);
+      });
+    }
     if (url === '/api/test-push') {
       const cfg = loadConfig();
       if (!cfg.ntfyTopic) return sendJson(res, { ok: false, error: 'no-topic' });

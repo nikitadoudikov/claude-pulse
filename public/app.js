@@ -1,6 +1,11 @@
 'use strict';
 
 // ---------- state ----------
+function statsUrl() {
+  return '/api/stats' + (state.sourceFilter ? '?source=' + state.sourceFilter : '');
+}
+function fetchStats() { return fetch(statsUrl()); }
+
 var state = { stats: null, tab: 'overview', connected: false, exactNums: false, chartMetric: 'cost', chartRange: '14d', session: null, officeState: null };
 
 // ---------- formatting ----------
@@ -144,7 +149,7 @@ document.addEventListener('click', function (e) {
   var next = cur[sid] === 'auto' ? 'off' : 'auto';
   if (next === 'auto' && !window.confirm('Auto mode: Pulse will answer every permission prompt in this session with Allow, including shell commands. Turn on?')) return;
   fetch('/api/rules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sid: sid, mode: next }) })
-    .then(function () { return fetch('/api/stats'); }).then(function (r) { return r.json(); }).then(applyStats).catch(function () {});
+    .then(function () { return fetchStats(); }).then(function (r) { return r.json(); }).then(applyStats).catch(function () {});
 });
 
 // ---------- sessions ----------
@@ -365,7 +370,7 @@ document.addEventListener('click', function (e) {
   fetch('/api/decision', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id: b.getAttribute('data-id'), decision: b.getAttribute('data-dec'), scope: b.getAttribute('data-scope') }),
-  }).then(function () { return fetch('/api/stats'); }).then(function (r) { return r.json(); }).then(applyStats).catch(function () {});
+  }).then(function () { return fetchStats(); }).then(function (r) { return r.json(); }).then(applyStats).catch(function () {});
 });
 
 // ---------- result readiness ring (top right, on every screen) ----------
@@ -411,9 +416,16 @@ function tone(freq, start, len, vol) {
   g.gain.exponentialRampToValueAtTime(0.0001, t + len);
   o.start(t); o.stop(t + len + 0.03);
 }
-function playAttention() { tone(660, 0, 0.16); tone(880, 0.16, 0.2); }
-function playDone() { tone(523, 0, 0.14); tone(659, 0.13, 0.14); tone(784, 0.26, 0.26); }
-function playError() { tone(220, 0, 0.18); tone(165, 0.14, 0.26); }
+// custom sounds (generated via `claude-pulse gen-sounds`): each has one job.
+// A missing file falls back to the built-in synth tone.
+function playCustom(name) {
+  var have = state.stats && state.stats.sounds;
+  if (!have || have.indexOf(name) === -1) return false;
+  try { new Audio('/sounds/' + name).play().catch(function () {}); return true; } catch (e) { return false; }
+}
+function playAttention() { if (playCustom('attention')) return; tone(660, 0, 0.16); tone(880, 0.16, 0.2); }
+function playDone() { if (playCustom('done')) return; tone(523, 0, 0.14); tone(659, 0.13, 0.14); tone(784, 0.26, 0.26); }
+function playError() { if (playCustom('error')) return; tone(220, 0, 0.18); tone(165, 0.14, 0.26); }
 
 // maskot voice: rotating phrases per state, swears (mildly) on errors
 var PHRASES = {
@@ -996,7 +1008,7 @@ document.getElementById('appr-toggle').addEventListener('click', function () {
   // if allow-all is on, one click resumes asking; otherwise toggle approvals
   var body = (r.enabled && r.allowAll) ? { allowAll: false, clearTools: true } : { enabled: !r.enabled };
   fetch('/api/rules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-    .then(function () { return fetch('/api/stats'); }).then(function (r) { return r.json(); }).then(applyStats).catch(function () {});
+    .then(function () { return fetchStats(); }).then(function (r) { return r.json(); }).then(applyStats).catch(function () {});
 });
 
 // ---------- fullscreen ----------
@@ -1077,7 +1089,9 @@ function renderSession() {
         '<button class="chip chip--accent resume-btn" style="border:0;cursor:pointer">copy resume cmd</button>' +
         '<button class="chip chip--accent handoff-btn" style="border:0;cursor:pointer">copy handoff</button>' +
         '<button class="chip chip--accent sched-btn" style="border:0;cursor:pointer">schedule message</button>' +
+        '<button class="chip chip--accent replay-btn" style="border:0;cursor:pointer">▶ replay</button>' +
       '</div>' +
+      '<div class="replay" id="replay" hidden></div>' +
       schedHtml(state.sessionSid) +
       '<div class="card__head" style="margin-top:18px"><span class="card__title">Usage growth per request</span>' +
         '<span class="card__hint">cumulative ' + state.chartMetric + '</span></div>' +
@@ -1157,7 +1171,7 @@ document.addEventListener('click', function (e) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sid: state.sessionSid, at: at.getTime(), text: tx.trim() }),
     }).then(function (r) { return r.json(); }).then(function () {
-      return fetch('/api/stats');
+      return fetchStats();
     }).then(function (r) { return r.json(); }).then(function (d) {
       state.stats = d; renderSession();
     }).catch(function () {});
@@ -1169,9 +1183,92 @@ document.addEventListener('click', function (e) {
     fetch('/api/schedule-remove', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: del.getAttribute('data-sched-id') }),
-    }).then(function () { return fetch('/api/stats'); }).then(function (r) { return r.json(); }).then(function (d) {
+    }).then(function () { return fetchStats(); }).then(function (r) { return r.json(); }).then(function (d) {
       state.stats = d; renderSession();
     }).catch(function () {});
+  }
+});
+
+// ---------- session replay: drag the slider, watch the session unfold ----------
+function replayFrame(i) {
+  var d = state.session;
+  if (!d || !d.turns.length) return;
+  i = Math.max(0, Math.min(d.turns.length - 1, i));
+  state.replayIdx = i;
+  var t = d.turns[i];
+  // every unique file touched up to this point in time (file tools only:
+  // Bash hints are command fragments, not paths)
+  var FILE_TOOLS = { Edit: 1, MultiEdit: 1, Write: 1, Read: 1, NotebookEdit: 1 };
+  var seen = {}, files = [];
+  for (var k = 0; k <= i; k++) {
+    (d.turns[k].actions || []).forEach(function (a) {
+      if (!FILE_TOOLS[a.name]) return;
+      var h = a.hint || '';
+      if (!h || h.indexOf('/') === -1) return;
+      var short = h.split('/').pop();
+      if (!seen[short]) { seen[short] = 1; files.push({ name: short, turn: k }); }
+    });
+  }
+  var slider = document.getElementById('replay-slider');
+  if (slider && +slider.value !== i) slider.value = i;
+  var pct = d.turns.length > 1 ? Math.round(i / (d.turns.length - 1) * 100) : 100;
+  document.getElementById('replay-pos').textContent =
+    '#' + t.index + ' / ' + d.turns.length + ' · ' + clock(t.t) + ' · ' + fmtTokens(t.cumTokens) + ' tok · ' + fmtCost(t.cumCost);
+  document.getElementById('replay-frame').innerHTML =
+    barHtml(pct, 'is-ok') +
+    (t.prompt ? '<div class="replay__prompt">' + esc(t.prompt.slice(0, 300)) + '</div>' : '') +
+    ((t.actions || []).length
+      ? '<div class="replay__acts">' + summarizeActions(t.actions) + '</div>'
+      : '') +
+    (t.text ? '<div class="replay__text">' + esc(t.text.slice(0, 260)) + '</div>' : '') +
+    (files.length
+      ? '<div class="replay__files"><span class="replay__fileslabel">files so far (' + files.length + ')</span>' +
+        files.slice(-24).map(function (f) {
+          return '<span class="chip' + (f.turn === i ? ' chip--accent' : '') + '">' + esc(f.name) + '</span>';
+        }).join(' ') + '</div>'
+      : '');
+}
+function stopReplayAuto() {
+  if (state.replayTimer) { clearInterval(state.replayTimer); state.replayTimer = null; }
+  var b = document.getElementById('replay-auto');
+  if (b) b.textContent = '▶';
+}
+document.addEventListener('click', function (e) {
+  var rb = e.target.closest('.replay-btn');
+  if (rb) {
+    e.stopPropagation();
+    var box = document.getElementById('replay');
+    if (!box) return;
+    if (!box.hidden) { box.hidden = true; stopReplayAuto(); return; }
+    var d = state.session;
+    if (!d || !d.turns.length) return;
+    box.hidden = false;
+    box.innerHTML =
+      '<div class="replay__bar">' +
+        '<button class="replay__play" id="replay-auto" title="autoplay">▶</button>' +
+        '<input type="range" id="replay-slider" min="0" max="' + (d.turns.length - 1) + '" value="0" step="1" />' +
+        '<span class="replay__pos" id="replay-pos"></span>' +
+      '</div>' +
+      '<div id="replay-frame"></div>';
+    replayFrame(0);
+    document.getElementById('replay-slider').addEventListener('input', function () {
+      stopReplayAuto();
+      replayFrame(+this.value);
+    });
+    return;
+  }
+  var auto = e.target.closest('#replay-auto');
+  if (auto) {
+    e.stopPropagation();
+    if (state.replayTimer) { stopReplayAuto(); return; }
+    auto.textContent = '⏸';
+    if (state.replayIdx >= ((state.session || {}).turns || []).length - 1) state.replayIdx = -1;
+    state.replayTimer = setInterval(function () {
+      var d = state.session;
+      if (!d) return stopReplayAuto();
+      if (state.replayIdx >= d.turns.length - 1) return stopReplayAuto();
+      replayFrame((state.replayIdx || 0) + 1);
+    }, 900);
   }
 });
 
@@ -1242,8 +1339,13 @@ document.addEventListener('click', function (e) {
   if (e.target.closest('.num')) return;
   if (e.target.closest('.mode-pill')) return;
   if (e.target.closest('.sched-btn') || e.target.closest('#sched-box')) return;
+  if (e.target.closest('.replay-btn') || e.target.closest('#replay')) return;
   var row = e.target.closest('[data-sid]');
-  if (row) openSession(row.getAttribute('data-sid'));
+  if (row) {
+    var dov = document.getElementById('dayov');
+    if (dov && !dov.hidden) dov.hidden = true;
+    openSession(row.getAttribute('data-sid'));
+  }
 });
 
 document.getElementById('session-back').addEventListener('click', function () {
@@ -1255,7 +1357,7 @@ document.getElementById('plan-select').addEventListener('change', function (e) {
   var plan = e.target.value;
   fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan: plan }) })
     .then(function (r) { return r.json(); })
-    .then(function () { return fetch('/api/stats'); })
+    .then(function () { return fetchStats(); })
     .then(function (r) { return r.json(); })
     .then(applyStats)
     .catch(function () {});
@@ -1265,8 +1367,10 @@ document.getElementById('plan-select').addEventListener('change', function (e) {
 // chosen on a glass entry screen, switchable later by clicking the logo.
 function applyMode(m) {
   state.mode = m;
+  state.sourceFilter = m === 'codex' ? 'codex' : 'claude';
   document.documentElement.setAttribute('data-mode', m);
   try { localStorage.setItem('pulse-mode', m); } catch (e) {}
+  fetchStats().then(function (r) { return r.json(); }).then(applyStats).catch(function () {});
   if (MODE_VIBES[m].indexOf(state.vibe) === -1) {
     state.vibe = MODE_VIBES[m][0];
     try { localStorage.setItem('pulse-vibe', state.vibe); } catch (e) {}
@@ -1278,6 +1382,7 @@ function applyMode(m) {
   var stored;
   try { stored = localStorage.getItem('pulse-mode'); } catch (e) {}
   state.mode = stored || 'claude';
+  state.sourceFilter = state.mode === 'codex' ? 'codex' : 'claude';
   document.documentElement.setAttribute('data-mode', state.mode);
   var pick = document.getElementById('mode-pick');
   if (pick) {
@@ -1371,10 +1476,10 @@ if (jumpEl) jumpEl.addEventListener('change', function () {
     if (MAP[id]) {
       var body = {}; body[MAP[id]] = e.target.checked;
       fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-        .then(function () { return fetch('/api/stats'); }).then(function (r) { return r.json(); }).then(applyStats).catch(function () {});
+        .then(function () { return fetchStats(); }).then(function (r) { return r.json(); }).then(applyStats).catch(function () {});
     } else if (id === 'set-approvals') {
       fetch('/api/rules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: e.target.checked }) })
-        .then(function () { return fetch('/api/stats'); }).then(function (r) { return r.json(); }).then(applyStats).catch(function () {});
+        .then(function () { return fetchStats(); }).then(function (r) { return r.json(); }).then(applyStats).catch(function () {});
     }
   });
 })();
@@ -1394,6 +1499,13 @@ function ytEmbed(url) {
   src += list ? '&list=' + encodeURIComponent(list) : '&loop=1&playlist=' + encodeURIComponent(id);
   return src;
 }
+// stations that explicitly allow embedding, for one-tap start (and as the
+// escape hatch when a pasted video says "unavailable" = embed-blocked by owner)
+var MUSIC_PRESETS = [
+  { label: 'lofi', id: 'jfKfPfyJRdk' },
+  { label: 'synthwave', id: '4xDzrJKXOOY' },
+  { label: 'jazz', id: 'Dx5qFachd3A' },
+];
 (function () {
   var toggle = document.getElementById('music-toggle');
   if (!toggle) return;
@@ -1402,24 +1514,39 @@ function ytEmbed(url) {
   var urlEl = document.getElementById('music-url');
   var play = document.getElementById('music-play');
   var stop = document.getElementById('music-stop');
+  var hint = document.getElementById('music-hint');
   try { urlEl.value = localStorage.getItem('pulse-music') || ''; } catch (e) {}
   toggle.addEventListener('click', function () { panel.hidden = !panel.hidden; });
-  function start() {
-    var src = ytEmbed(urlEl.value);
-    if (!src) { urlEl.value = ''; urlEl.placeholder = 'that does not look like a YouTube link'; return; }
-    try { localStorage.setItem('pulse-music', urlEl.value.trim()); } catch (e) {}
+  function startSrc(src) {
     frame.innerHTML = '<iframe width="320" height="180" src="' + src + '" title="music" frameborder="0" ' +
       'allow="autoplay; encrypted-media" allowfullscreen></iframe>';
     frame.hidden = false;
     stop.hidden = false;
     toggle.classList.add('is-on');
+    if (hint) hint.textContent = 'says "unavailable"? that video blocks embedding — use a preset or another link';
+  }
+  function start() {
+    var src = ytEmbed(urlEl.value);
+    if (!src) { urlEl.value = ''; urlEl.placeholder = 'that does not look like a YouTube link'; return; }
+    try { localStorage.setItem('pulse-music', urlEl.value.trim()); } catch (e) {}
+    startSrc(src);
   }
   play.addEventListener('click', start);
   urlEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') start(); });
   stop.addEventListener('click', function () {
     frame.innerHTML = ''; frame.hidden = true; stop.hidden = true;
     toggle.classList.remove('is-on');
+    if (hint) hint.textContent = '';
   });
+  document.addEventListener('click', function (e) {
+    var pr = e.target.closest('.music__preset');
+    if (!pr) return;
+    startSrc('https://www.youtube-nocookie.com/embed/' + pr.getAttribute('data-yt') + '?autoplay=1');
+  });
+  var presets = document.getElementById('music-presets');
+  if (presets) presets.innerHTML = MUSIC_PRESETS.map(function (p) {
+    return '<button class="music__preset" data-yt="' + p.id + '">' + p.label + '</button>';
+  }).join('');
 })();
 
 // ---------- profile: rank, records, achievements (all local) ----------
@@ -1546,13 +1673,48 @@ function renderHeatmap(s) {
   el.innerHTML = weeks.map(function (col) {
     return '<div class="heat__col">' + col.map(function (d) {
       if (!d) return '<i class="heat__cell is-pad"></i>';
-      return '<i class="heat__cell l' + lvl(d.tokens) + '" title="' + esc(d.date) + ' · ' + fmtTokens(d.tokens) + ' tok · ' + fmtCost(d.cost) + '"></i>';
+      return '<i class="heat__cell l' + lvl(d.tokens) + '" data-day="' + esc(d.date) + '" title="' + esc(d.date) + ' · ' + fmtTokens(d.tokens) + ' tok · ' + fmtCost(d.cost) + '"></i>';
     }).join('') + '</div>';
   }).join('');
   var active = daily.filter(function (d) { return d.tokens > 0; }).length;
   var hint = document.getElementById('profile-heat-hint');
-  if (hint) hint.textContent = active + ' active days · hover a square';
+  if (hint) hint.textContent = active + ' active days · click a square for the full story';
 }
+
+// click a heatmap square -> full-screen "what happened that day"
+function openDay(date) {
+  var ov = document.getElementById('dayov');
+  var box = document.getElementById('dayov-body');
+  if (!ov || !box) return;
+  box.innerHTML = '<div class="empty">loading…</div>';
+  ov.hidden = false;
+  fetch('/api/day?date=' + encodeURIComponent(date)).then(function (r) { return r.json(); }).then(function (d) {
+    var when = new Date(date + 'T12:00:00');
+    var nice = when.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    var sess = (d.sessions || []).map(function (x) {
+      return '<div class="dayov__row trow--link" data-sid="' + esc(x.sid) + '">' +
+        (x.source === 'codex' ? '<span class="chip chip--codex">Codex</span> ' : '') +
+        '<span class="dayov__title">' + esc(x.title) + '</span>' +
+        '<small>' + esc(x.project) + '</small>' +
+        '<span class="dayov__num">' + fmtTokens(x.tokens) + ' · ' + fmtCost(x.cost) + '</span>' +
+      '</div>';
+    }).join('');
+    var tools = (d.tools || []).map(function (t) {
+      return '<span class="chip">' + esc(t.name) + ' ×' + t.count + '</span>';
+    }).join(' ');
+    box.innerHTML =
+      '<div class="dayov__date">' + esc(nice) + '</div>' +
+      '<div class="dayov__big">' + fmtTokens(d.tokens) + ' <small>tokens · ' + fmtCost(d.cost) + '</small></div>' +
+      (sess ? '<div class="dayov__label">what you worked on</div>' + sess : '<div class="empty">a quiet day</div>') +
+      (tools ? '<div class="dayov__label">moves</div><div class="dayov__tools">' + tools + '</div>' : '');
+  }).catch(function () { box.innerHTML = '<div class="empty">failed to load this day</div>'; });
+}
+document.addEventListener('click', function (e) {
+  var cell = e.target.closest('.heat__cell[data-day]');
+  if (cell) { openDay(cell.getAttribute('data-day')); return; }
+  var ov = document.getElementById('dayov');
+  if (ov && !ov.hidden && (e.target === ov || e.target.closest('#dayov-close'))) ov.hidden = true;
+});
 
 // ---------- Pulse Wrapped: your week as a shareable card ----------
 function wrappedData(s) {
@@ -1689,7 +1851,7 @@ function applyStats(data) { state.stats = data; render(); }
 
 function startPolling() {
   function tick() {
-    fetch('/api/stats').then(function (r) { return r.json(); })
+    fetchStats().then(function (r) { return r.json(); })
       .then(function (d) { state.connected = false; applyStats(d); })
       .catch(function () {});
   }
@@ -1702,8 +1864,14 @@ function connect() {
   var es = new EventSource('/api/events');
   es.addEventListener('stats', function (e) {
     state.connected = true;
+    if (state.sourceFilter) return; // filtered mode refreshes via fetchStats below
     try { applyStats(JSON.parse(e.data)); } catch (err) {}
   });
+  // filtered modes poll on the same cadence the SSE pushes
+  setInterval(function () {
+    if (!state.sourceFilter) return;
+    fetchStats().then(function (r) { return r.json(); }).then(applyStats).catch(function () {});
+  }, 3000);
   es.onerror = function () {
     state.connected = false;
     document.getElementById('live-dot').classList.add('is-stale');

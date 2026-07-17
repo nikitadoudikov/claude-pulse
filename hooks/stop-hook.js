@@ -75,7 +75,11 @@ function desktopNotify(title, body, sound) {
     if (process.platform === 'darwin') {
       var script = 'display notification ' + shellQuote(body) + ' with title ' + shellQuote(title);
       spawn('osascript', ['-e', script], { stdio: 'ignore', detached: true }).unref();
-      if (sound) spawn('afplay', ['/System/Library/Sounds/' + sound + '.aiff'], { stdio: 'ignore', detached: true }).unref();
+      if (sound) {
+        var custom = path.join(os.homedir(), '.claude-pulse', 'sounds', 'done.mp3');
+        var sfile = fs.existsSync(custom) ? custom : '/System/Library/Sounds/' + sound + '.aiff';
+        spawn('afplay', [sfile], { stdio: 'ignore', detached: true }).unref();
+      }
     } else if (process.platform === 'linux') {
       spawn('notify-send', [title, body], { stdio: 'ignore', detached: true }).unref();
     }
