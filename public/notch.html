@@ -49,6 +49,18 @@
     .info { margin-top: 7px; display: flex; gap: 10px; font-size: 10.5px; color: #6f6d64; white-space: nowrap; overflow: hidden; }
     .info b { color: #9a988e; font-weight: 500; }
     .dot.limit { background: #cc6b5a; }
+    /* hover: the pill grows into a fuller menu */
+    .more { max-height: 0; overflow: hidden; transition: max-height .28s cubic-bezier(.22,.61,.36,1); }
+    .pill.is-open .more { max-height: 260px; }
+    .more__label { margin: 10px 0 4px; font-size: 9.5px; text-transform: uppercase; letter-spacing: .08em; color: #6f6d64; }
+    .more__sess { display: flex; align-items: center; gap: 7px; padding: 4px 0; font-size: 12px; cursor: pointer; border-radius: 6px; }
+    .more__sess:hover { background: rgba(255,255,255,.05); }
+    .more__sess.is-picked .more__title { color: #d97757; }
+    .more__title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .more__sess small { color: #6f6d64; font-size: 10px; white-space: nowrap; }
+    .more__act { font-size: 10.5px; color: #9a988e; padding: 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .more__btns { display: flex; gap: 6px; margin-top: 9px; }
+    .more__btns a { text-decoration: none; }
     a.open { color: #6f6d64; text-decoration: none; font-size: 11px; }
     [hidden] { display: none !important; }
   </style>
@@ -71,6 +83,16 @@
     </div>
     <div class="bar"><i id="ctx" style="width:0%"></i></div>
     <div class="info" id="info"></div>
+    <div class="more" id="more">
+      <div class="more__label">live sessions</div>
+      <div id="more-sessions"></div>
+      <div class="more__label">last moves</div>
+      <div id="more-activity"></div>
+      <div class="more__btns">
+        <button id="m-pause">pause</button>
+        <a href="/" target="_blank"><button>open pulse ↗</button></a>
+      </div>
+    </div>
     <div class="appr" id="appr" hidden>
       <div class="appr__sum" id="appr-sum"></div>
       <div class="btns">
@@ -151,6 +173,21 @@
           document.getElementById('appr-sum').textContent = p.tool + ': ' + (p.summary || '');
           box.hidden = false;
         } else { pendingId = null; box.hidden = true; }
+
+        // the hover menu: every live session (click to pick), recent moves, pause
+        var ms = document.getElementById('more-sessions');
+        ms.innerHTML = list.map(function (x, i) {
+          return '<div class="more__sess' + (i === pickIdx ? ' is-picked' : '') + '" data-i="' + i + '">' +
+            '<span class="more__title">' + escT(x.title) + '</span>' +
+            '<small>' + escT(x.project) + ' · ' + x.contextPercent + '%</small></div>';
+        }).join('') || '<div class="more__act">none right now</div>';
+        document.getElementById('more-activity').innerHTML = (s.activity || []).slice(0, 3).map(function (x) {
+          return '<div class="more__act">' + escT(x.name) + ' · ' + escT((x.hint || '').slice(0, 44)) + '</div>';
+        }).join('') || '<div class="more__act">quiet</div>';
+        var mp = document.getElementById('m-pause');
+        var paused = !!(s.rules && s.rules.paused);
+        mp.textContent = paused ? 'resume' : 'pause';
+        mp.style.color = paused ? '#d9a157' : '';
         reportHeight();
       }).catch(function () {
         document.getElementById('state').textContent = 'pulse is not running';
@@ -169,6 +206,39 @@
     document.getElementById('prev').addEventListener('click', function () { pickIdx--; if (pickIdx < 0) pickIdx = 999; tickFromCache(); });
     document.getElementById('next').addEventListener('click', function () { pickIdx++; tickFromCache(); });
     function tickFromCache() { tick(); }
+    function escT(t) {
+      return String(t == null ? '' : t).replace(/[&<>"]/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+      });
+    }
+
+    // hover anywhere on the pill: it grows into the fuller menu, then shrinks back
+    (function () {
+      var pill = document.querySelector('.pill');
+      var closeTimer = null;
+      pill.addEventListener('mouseenter', function () {
+        if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
+        pill.classList.add('is-open');
+        setTimeout(reportHeight, 300); // after the max-height transition
+      });
+      pill.addEventListener('mouseleave', function () {
+        closeTimer = setTimeout(function () {
+          pill.classList.remove('is-open');
+          setTimeout(reportHeight, 300);
+        }, 250);
+      });
+    })();
+    document.addEventListener('click', function (e) {
+      var row = e.target.closest('.more__sess[data-i]');
+      if (row) { pickIdx = +row.getAttribute('data-i'); tick(); return; }
+      if (e.target.closest('#m-pause')) {
+        var paused = !!(lastStats && lastStats.rules && lastStats.rules.paused);
+        fetch('/api/pause', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paused: !paused }),
+        }).then(tick);
+      }
+    });
 
     // mini ECG: one heartbeat complex per beat, rate = server bpm, flat on limit
     (function () {

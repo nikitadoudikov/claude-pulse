@@ -698,7 +698,7 @@ function dayDigest(date, config) {
   const bySid = {};
   const byTool = {};
   const titles = {};
-  let tokens = 0, cost = 0;
+  let tokens = 0, cost = 0, firstT = null, lastT = null;
 
   const fold = (d) => {
     if (!d) return;
@@ -706,6 +706,8 @@ function dayDigest(date, config) {
       if (dateKey(e.t) !== date) continue;
       const t = entryTokens(e), c = entryCost(e, pricing);
       tokens += t; cost += c;
+      if (!firstT || e.t < firstT) firstT = e.t;
+      if (!lastT || e.t > lastT) lastT = e.t;
       if (e.sid) {
         const b = bySid[e.sid] || (bySid[e.sid] = { tokens: 0, cost: 0, source: e.source || 'claude' });
         b.tokens += t; b.cost += c;
@@ -742,7 +744,7 @@ function dayDigest(date, config) {
     .map((name) => ({ name, count: byTool[name] }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
-  return { date, tokens, cost, sessions, tools };
+  return { date, tokens, cost, firstT, lastT, sessions, tools };
 }
 
 module.exports = { scan, sessionDigest, dayDigest, listJsonl, PROJECTS_DIR };

@@ -761,11 +761,27 @@ body.office-mode .office__sub { color: #b7b5ab; }
 .wrapped__foot { margin-top: 6px; font-size: 11px; color: #6f6d64; }
 .wrapped__actions { display: flex; gap: 10px; }
 
-/* ===== Day overlay (heatmap click-through) ===== */
-.dayov { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; padding: 24px; }
-.dayov__card { width: min(560px, 94vw); max-height: 84vh; overflow-y: auto; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius); padding: 22px 24px; box-shadow: 0 30px 80px rgba(0,0,0,.45); }
-.dayov__date { font-size: 20px; font-weight: 700; }
-.dayov__big { margin-top: 4px; font-size: 30px; font-weight: 700; color: var(--accent); }
+/* ===== Day overlay: half the screen, over frosted glass ===== */
+.dayov {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(24, 23, 20, .38);
+  -webkit-backdrop-filter: blur(16px) saturate(.85);
+  backdrop-filter: blur(16px) saturate(.85);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+  opacity: 0; transition: opacity .24s var(--ease);
+}
+.dayov.is-open { opacity: 1; }
+.dayov__card {
+  width: min(52vw, 780px); min-width: min(560px, 94vw); max-height: 88vh; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--hairline); border-radius: 22px;
+  padding: 34px 40px; box-shadow: 0 40px 110px rgba(0,0,0,.5);
+  transform: scale(.92) translateY(14px); transition: transform .26s var(--ease);
+}
+.dayov.is-open .dayov__card { transform: scale(1) translateY(0); }
+.dayov__weekday { font-size: 15px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.dayov__date { font-size: 44px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+.dayov__summary { margin: 14px 0 4px; font-size: 14.5px; line-height: 1.55; color: var(--muted); }
+.dayov__big { margin-top: 10px; font-size: 34px; font-weight: 700; color: var(--accent); }
 .dayov__big small { font-size: 14px; font-weight: 400; color: var(--muted); }
 .dayov__label { margin: 16px 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); }
 .dayov__row { display: flex; align-items: baseline; gap: 8px; padding: 7px 0; border-top: 1px dashed var(--hairline); font-size: 13.5px; cursor: pointer; }

@@ -1730,16 +1730,45 @@ function renderHeatmap(s) {
   if (hint) hint.textContent = active + ' active days · click a square for the full story';
 }
 
-// click a heatmap square -> full-screen "what happened that day"
+// a plain-words story of the day, composed from the digest - no AI, just facts
+function daySummary(d, nice) {
+  if (!d.tokens) return 'A quiet day — nothing ran.';
+  var bits = [];
+  if (d.firstT && d.lastT) {
+    var span = (d.lastT - d.firstT) / 3600000;
+    bits.push('You worked from ' + clock(d.firstT) + ' to ' + clock(d.lastT) +
+      (span >= 1 ? ' (a ' + (Math.round(span * 10) / 10) + '-hour day)' : ''));
+  }
+  var sess = d.sessions || [];
+  if (sess.length) {
+    var top = sess[0];
+    var share = d.tokens ? Math.round(top.tokens / d.tokens * 100) : 0;
+    bits.push(sess.length === 1
+      ? 'everything went into “' + top.title.slice(0, 50) + '”'
+      : sess.length + ' sessions, ' + share + '% of it on “' + top.title.slice(0, 50) + '” (' + top.project + ')');
+  }
+  var tools = d.tools || [];
+  if (tools.length) {
+    var tt = tools[0];
+    var tCount = tools.reduce(function (n, t) { return n + t.count; }, 0);
+    bits.push(tCount + ' tool calls, mostly ' + tt.name + ' (×' + tt.count + ')');
+  }
+  bits.push(fmtTokens(d.tokens) + ' tokens · ' + fmtCost(d.cost) + ' API-equivalent');
+  return bits.join(' · ') + '.';
+}
+
+// click a heatmap square -> the day opens huge over frosted glass
 function openDay(date) {
   var ov = document.getElementById('dayov');
   var box = document.getElementById('dayov-body');
   if (!ov || !box) return;
   box.innerHTML = '<div class="empty">loading…</div>';
   ov.hidden = false;
+  requestAnimationFrame(function () { ov.classList.add('is-open'); }); // let the transition run
   fetch('/api/day?date=' + encodeURIComponent(date)).then(function (r) { return r.json(); }).then(function (d) {
     var when = new Date(date + 'T12:00:00');
-    var nice = when.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    var weekday = when.toLocaleDateString('en-US', { weekday: 'long' });
+    var monthday = when.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
     var sess = (d.sessions || []).map(function (x) {
       return '<div class="dayov__row trow--link" data-sid="' + esc(x.sid) + '">' +
         (x.source === 'codex' ? '<span class="chip chip--codex">Codex</span> ' : '') +
@@ -1752,17 +1781,25 @@ function openDay(date) {
       return '<span class="chip">' + esc(t.name) + ' ×' + t.count + '</span>';
     }).join(' ');
     box.innerHTML =
-      '<div class="dayov__date">' + esc(nice) + '</div>' +
+      '<div class="dayov__weekday">' + esc(weekday) + '</div>' +
+      '<div class="dayov__date">' + esc(monthday) + '</div>' +
       '<div class="dayov__big">' + fmtTokens(d.tokens) + ' <small>tokens · ' + fmtCost(d.cost) + '</small></div>' +
-      (sess ? '<div class="dayov__label">what you worked on</div>' + sess : '<div class="empty">a quiet day</div>') +
+      '<p class="dayov__summary">' + esc(daySummary(d, weekday)) + '</p>' +
+      (sess ? '<div class="dayov__label">the story of the day</div>' + sess : '') +
       (tools ? '<div class="dayov__label">moves</div><div class="dayov__tools">' + tools + '</div>' : '');
   }).catch(function () { box.innerHTML = '<div class="empty">failed to load this day</div>'; });
+}
+function closeDay() {
+  var ov = document.getElementById('dayov');
+  if (!ov || ov.hidden) return;
+  ov.classList.remove('is-open');
+  setTimeout(function () { ov.hidden = true; }, 240);
 }
 document.addEventListener('click', function (e) {
   var cell = e.target.closest('.heat__cell[data-day]');
   if (cell) { openDay(cell.getAttribute('data-day')); return; }
   var ov = document.getElementById('dayov');
-  if (ov && !ov.hidden && (e.target === ov || e.target.closest('#dayov-close'))) ov.hidden = true;
+  if (ov && !ov.hidden && (e.target === ov || e.target.closest('#dayov-close'))) closeDay();
 });
 
 // ---------- Pulse Wrapped: your week as a shareable card ----------
