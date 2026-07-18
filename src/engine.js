@@ -525,10 +525,24 @@ function scan(config, nowMs, calibrateAt, source) {
   const maxOf = (o) => { let m = 0; for (const k in o) if (o[k] > m) m = o[k]; return m; };
   const peaks = { fiveHour: maxOf(blockB), day: maxOf(dayB), week: maxOf(weekB) };
 
+  // the pulse itself: a heart rate for the dashboard. Resting ~45 bpm; tool
+  // calls and generated output over the last two minutes drive it up. The
+  // server may override it to 0 (flatline) while a usage limit is active.
+  const twoMinStart = now - 120000;
+  let tools2m = 0, outTok2m = 0;
+  for (const t of allTools) if (t.t && t.t >= twoMinStart) tools2m++;
+  for (const e of allTokens) if (e.t >= twoMinStart) outTok2m += e.out;
+  const pulse = {
+    bpm: Math.min(185, Math.round(45 + Math.min(92, tools2m * 6) + Math.min(48, outTok2m / 400))),
+    tools2m,
+    outTok2m,
+  };
+
   return {
     generatedAt: now,
     plan: config.plan,
     rank: rankFor(windows.total.tokens),
+    pulse,
     eta,
     resets,
     peaks,

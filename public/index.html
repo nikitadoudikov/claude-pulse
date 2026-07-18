@@ -63,6 +63,10 @@
     </nav>
 
     <div class="topbar__right">
+      <span class="ecg" id="ecg-wrap" title="the pulse: how hard Claude is working right now (tool calls + output in the last 2 min). Flatline = usage limit. Click for the office.">
+        <canvas id="ecg" width="92" height="26"></canvas>
+        <span class="ecg__bpm" id="ecg-bpm"></span>
+      </span>
       <span class="ready" id="ready" hidden title="result readiness">
         <svg class="ready__ring" viewBox="0 0 36 36" width="18" height="18" aria-hidden="true">
           <circle class="ready__bg" cx="18" cy="18" r="15"></circle>

@@ -20,6 +20,12 @@
       box-shadow: 0 14px 40px rgba(0,0,0,.5);
     }
     .row { display: flex; align-items: center; gap: 9px; }
+    .ecg { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+    .ecg span { font-size: 10px; font-weight: 600; color: #9a988e; min-width: 18px; font-variant-numeric: tabular-nums; }
+    .switch { display: inline-flex; align-items: center; gap: 2px; flex: none; margin-left: 4px; }
+    .switch button { border: 0; background: none; color: #6f6d64; font-size: 12px; padding: 0 3px; cursor: pointer; }
+    .switch button:hover { color: #eceae1; }
+    .switch span { font-size: 9.5px; color: #6f6d64; }
     .dot { width: 8px; height: 8px; border-radius: 50%; background: #6f6d64; flex: none; }
     .dot.working { background: #d97757; animation: pulse 1.4s ease-in-out infinite; }
     .dot.done { background: #6a9a78; }
@@ -52,9 +58,17 @@
     <div class="row">
       <span class="dot" id="dot"></span>
       <span class="state" id="state">connecting…</span>
+      <span class="ecg"><canvas id="ecg" width="56" height="16"></canvas><span id="bpm"></span></span>
       <span class="meta" id="meta"></span>
     </div>
-    <div class="sub" id="sub"></div>
+    <div class="row">
+      <div class="sub" id="sub" style="flex:1"></div>
+      <span class="switch" id="switch" hidden>
+        <button id="prev" title="previous session">‹</button>
+        <span id="pos"></span>
+        <button id="next" title="next session">›</button>
+      </span>
+    </div>
     <div class="bar"><i id="ctx" style="width:0%"></i></div>
     <div class="info" id="info"></div>
     <div class="appr" id="appr" hidden>
@@ -69,6 +83,8 @@
   </div>
   <script>
     var pendingId = null;
+    var pickIdx = 0;   // which of the live sessions the strip is showing
+    var lastStats = null;
     function fmt(n) {
       n = n || 0;
       if (n >= 1e9) return (n / 1e9).toFixed(1) + 'B';
@@ -90,12 +106,21 @@
         var phase = waiting ? 'waiting' : (s.eta ? s.eta.phase : 'idle');
         var dot = document.getElementById('dot');
         dot.className = 'dot ' + (limit ? 'limit' : phase === 'working' ? 'working' : phase === 'done' ? 'done' : waiting ? 'waiting' : '');
+        lastStats = s;
         var stEl = document.getElementById('state');
-        var a = s.active;
+        // the strip can page through every live session, not just the newest
+        var list = (s.activeSessions && s.activeSessions.length) ? s.activeSessions : (s.active ? [s.active] : []);
+        if (pickIdx >= list.length) pickIdx = 0;
+        var a = list.length ? list[pickIdx] : null;
+        var isNewest = a && s.active && a.sid === s.active.sid;
+        var sw = document.getElementById('switch');
+        sw.hidden = list.length < 2;
+        document.getElementById('pos').textContent = list.length > 1 ? (pickIdx + 1) + '/' + list.length : '';
         // a usage-limit hit outranks everything: "needs you" while nothing can
         // run is a lie, show when work can resume instead
         if (limit) stEl.textContent = 'limit reached — resets in ' + dur(limit.resetsAt - now);
         else if (waiting) stEl.textContent = 'needs you';
+        else if (a && !isNewest) stEl.textContent = 'idle — last move ' + dur(now - a.lastT) + ' ago';
         else if (phase === 'working') stEl.textContent = (s.activity && s.activity[0]) ? (s.activity[0].name + ' · ' + (s.activity[0].hint || '').slice(0, 30)) : 'working…';
         else if (phase === 'done') stEl.textContent = 'done — your turn';
         else stEl.textContent = 'idle';
@@ -103,7 +128,7 @@
           fmt(s.windows.today.tokens) + ' · $' + (s.windows.today.cost || 0).toFixed(0) + ' today';
         var sub = a ? (a.project + ' · ' + a.title) : '';
         if (limit) sub = 'back at ' + (s.limitHit.resetText || '') + (sub ? ' · ' + sub : '');
-        else if (phase === 'working' && s.eta && s.eta.remainingMs != null) sub = '~' + dur(s.eta.remainingMs) + ' left · ' + sub;
+        else if (isNewest && phase === 'working' && s.eta && s.eta.remainingMs != null) sub = '~' + dur(s.eta.remainingMs) + ' left · ' + sub;
         document.getElementById('sub').textContent = sub;
         document.getElementById('ctx').style.width = (a ? a.contextPercent : 0) + '%';
         // one dense line of the numbers that matter at a glance
@@ -141,6 +166,49 @@
     document.getElementById('b-allow').addEventListener('click', function () { decide('allow', 'once'); });
     document.getElementById('b-all').addEventListener('click', function () { decide('allow', 'all'); });
     document.getElementById('b-deny').addEventListener('click', function () { decide('deny', 'once'); });
+    document.getElementById('prev').addEventListener('click', function () { pickIdx--; if (pickIdx < 0) pickIdx = 999; tickFromCache(); });
+    document.getElementById('next').addEventListener('click', function () { pickIdx++; tickFromCache(); });
+    function tickFromCache() { tick(); }
+
+    // mini ECG: one heartbeat complex per beat, rate = server bpm, flat on limit
+    (function () {
+      var cv = document.getElementById('ecg');
+      var dpr = window.devicePixelRatio || 1;
+      var W = 56, H = 16;
+      cv.width = W * dpr; cv.height = H * dpr;
+      cv.style.width = W + 'px'; cv.style.height = H + 'px';
+      var ctx = cv.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      var buf = new Array(W).fill(0), beatT = 0, last = 0, shown = 0;
+      function wave(ph) {
+        if (ph < 0.14 && ph > 0.06) return 0.14 * Math.sin((ph - 0.06) / 0.08 * Math.PI);
+        if (ph >= 0.20 && ph < 0.23) return -0.18 * ((ph - 0.20) / 0.03);
+        if (ph >= 0.23 && ph < 0.27) return -0.18 + 1.18 * ((ph - 0.23) / 0.04);
+        if (ph >= 0.27 && ph < 0.31) return 1.0 - 1.32 * ((ph - 0.27) / 0.04);
+        if (ph >= 0.31 && ph < 0.36) return -0.32 + 0.32 * ((ph - 0.31) / 0.05);
+        if (ph >= 0.44 && ph < 0.60) return 0.26 * Math.sin((ph - 0.44) / 0.16 * Math.PI);
+        return 0;
+      }
+      function frame(ts) {
+        requestAnimationFrame(frame);
+        if (!last) { last = ts; return; }
+        var dt = Math.min(0.1, (ts - last) / 1000); last = ts;
+        var p = (lastStats && lastStats.pulse) || { bpm: 0, phase: 'rest' };
+        shown += (p.bpm - shown) * Math.min(1, dt * 2);
+        var v = 0;
+        if (shown > 1) { beatT = (beatT + dt * shown / 60) % 1; v = wave(beatT); }
+        buf.push(v); buf.shift();
+        ctx.clearRect(0, 0, W, H);
+        ctx.strokeStyle = p.phase === 'limit' ? '#cc6b5a' : p.phase === 'waiting' ? '#d9a157' : p.phase === 'working' ? '#d97757' : '#6f6d64';
+        ctx.lineWidth = 1.3;
+        ctx.beginPath();
+        var base = H * 0.64, amp = H * 0.42;
+        for (var i = 0; i < W; i++) { var y = base - buf[i] * amp; i ? ctx.lineTo(i, y) : ctx.moveTo(i, y); }
+        ctx.stroke();
+        document.getElementById('bpm').textContent = p.phase === 'limit' ? '—' : Math.round(shown);
+      }
+      requestAnimationFrame(frame);
+    })();
     // inside the native overlay, tell the window how tall the pill really is
     // so the transparent remainder never blocks clicks on whatever is below
     function reportHeight() {

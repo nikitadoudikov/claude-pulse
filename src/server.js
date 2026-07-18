@@ -115,6 +115,13 @@ function getStats(source) {
   // the real ceiling: your 5h spend at the moment you last hit the limit (within
   // 24h). When present, the bars use it instead of the all-time peak guess.
   data.limitCeiling = data.calCeiling && data.calCeiling > 0 ? data.calCeiling : null;
+  // heartbeat phase: flatline on an active limit, amber when Claude needs you
+  if (data.pulse) {
+    data.pulse.phase = data.limitHit ? 'limit'
+      : (data.pending && data.pending.length) || data.waiting ? 'waiting'
+      : (data.eta && data.eta.working) ? 'working' : 'rest';
+    if (data.limitHit) data.pulse.bpm = 0;
+  }
   data.sounds = availableSounds();
   data.source = source || 'all';
 

@@ -1895,6 +1895,78 @@ document.addEventListener('click', function (e) {
   if (w && !w.hidden && e.target === w) w.hidden = true;
 });
 
+// ---------- the pulse itself: a live ECG of how hard Claude is working ----------
+// One PQRST complex per beat; beat frequency = bpm from the server. Flatline
+// on a usage limit, amber when Claude needs you, accent while working.
+function ecgWave(ph) {
+  if (ph < 0.06) return 0;
+  if (ph < 0.14) return 0.14 * Math.sin((ph - 0.06) / 0.08 * Math.PI);          // P
+  if (ph < 0.20) return 0;
+  if (ph < 0.23) return -0.18 * ((ph - 0.20) / 0.03);                            // Q
+  if (ph < 0.27) return -0.18 + 1.18 * ((ph - 0.23) / 0.04);                     // R up
+  if (ph < 0.31) return 1.0 - 1.32 * ((ph - 0.27) / 0.04);                       // R down
+  if (ph < 0.36) return -0.32 + 0.32 * ((ph - 0.31) / 0.05);                     // S recover
+  if (ph < 0.44) return 0;
+  if (ph < 0.60) return 0.26 * Math.sin((ph - 0.44) / 0.16 * Math.PI);           // T
+  return 0;
+}
+(function () {
+  var canvas = document.getElementById('ecg');
+  if (!canvas) return;
+  var wrap = document.getElementById('ecg-wrap');
+  var bpmEl = document.getElementById('ecg-bpm');
+  var dpr = window.devicePixelRatio || 1;
+  var W = 92, H = 26;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  var ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  var buf = new Array(W).fill(0);
+  var beatT = 0, lastTs = 0, shownBpm = 0;
+  function color(phase) {
+    if (phase === 'limit') return '#cc6b5a';
+    if (phase === 'waiting') return '#d9a157';
+    if (phase === 'working') return cssVar('--accent') || '#d97757';
+    return cssVar('--muted') || '#9a988e';
+  }
+  function frame(ts) {
+    requestAnimationFrame(frame);
+    if (!lastTs) { lastTs = ts; return; }
+    var dt = Math.min(0.1, (ts - lastTs) / 1000);
+    lastTs = ts;
+    var p = (state.stats && state.stats.pulse) || { bpm: 0, phase: 'rest' };
+    // ease the displayed bpm so rate changes feel organic, not stepped
+    shownBpm += (p.bpm - shownBpm) * Math.min(1, dt * 2);
+    var sample = 0;
+    if (shownBpm > 1) {
+      beatT = (beatT + dt * shownBpm / 60) % 1;
+      sample = ecgWave(beatT);
+    }
+    buf.push(sample); buf.shift();
+    ctx.clearRect(0, 0, W, H);
+    ctx.strokeStyle = color(p.phase);
+    ctx.lineWidth = 1.6;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    var base = H * 0.62, amp = H * 0.42;
+    for (var i = 0; i < W; i++) {
+      var y = base - buf[i] * amp;
+      i ? ctx.lineTo(i, y) : ctx.moveTo(i, y);
+    }
+    ctx.stroke();
+    var label = p.phase === 'limit' ? '—' : String(Math.round(shownBpm));
+    if (bpmEl.textContent !== label) bpmEl.textContent = label;
+    bpmEl.style.color = color(p.phase);
+  }
+  requestAnimationFrame(frame);
+  if (wrap) wrap.addEventListener('click', function () {
+    state.tab = 'office';
+    document.querySelectorAll('.tab').forEach(function (t) { t.classList.toggle('is-active', t.getAttribute('data-tab') === 'office'); });
+    document.querySelectorAll('.panel').forEach(function (pn) { pn.classList.toggle('is-active', pn.id === 'panel-office'); });
+    render();
+  });
+})();
+
 // ---------- data: SSE with polling fallback ----------
 function applyStats(data) { state.stats = data; render(); }
 
