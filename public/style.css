@@ -793,3 +793,7 @@ body.office-mode .office__sub { color: #b7b5ab; }
 .music__preset { border: 1px solid var(--hairline) !important; background: var(--surface-2) !important; color: var(--muted) !important; }
 .music__preset:hover { color: var(--accent) !important; border-color: var(--accent-line) !important; }
 .music__hint { margin-top: 5px; font-size: 10.5px; color: var(--faint); max-width: 320px; }
+
+/* schedule item states */
+.sched__err { font-size: 11px; color: var(--danger); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+.sched__retry { cursor: pointer; }

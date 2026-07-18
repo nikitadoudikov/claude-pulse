@@ -92,17 +92,23 @@ function recover(rest) {
 // A notch-style strip: a small chromeless browser window pinned top-center,
 // showing state + approvals. Shared logic lives in src/notchlaunch.js so the
 // dashboard button can do the same thing.
-function openNotch(args) {
+function openNotch(args, rest) {
+  const nl = require('../src/notchlaunch');
+  if (rest && rest.indexOf('stop') !== -1) {
+    console.log(nl.stopNative() ? 'notch closed' : 'notch was not running');
+    return;
+  }
   const daemon = require('../src/daemon');
   const running = daemon.running();
   const port = (running && running.port) || args.port || 4317;
-  const r = require('../src/notchlaunch').launch(port);
+  console.log('opening the notch (first run compiles a tiny native overlay, ~10s)...');
+  const r = nl.launch(port);
   if (r.ok) {
-    console.log(`notch opened via ${r.via} at ${r.url}`);
-    console.log('tip: drag it under the camera notch once; Chrome remembers the spot');
+    console.log(`notch opened: ${r.via}`);
+    console.log('close it with a right-click, or: claude-pulse notch stop');
   } else {
     openBrowser(r.url);
-    console.log('no Chromium browser found for the chromeless window; opened as a normal tab: ' + r.url);
+    console.log('could not build the native overlay (Xcode CLI tools missing?); opened as a browser tab: ' + r.url);
   }
 }
 
@@ -176,7 +182,7 @@ async function main() {
     if (cmd === 'status') return daemon.status();
     if (cmd === 'recover') return recover(argv.slice(1));
     if (cmd === 'export-all') return exportAll(argv.slice(1));
-    if (cmd === 'notch') return openNotch(args);
+    if (cmd === 'notch') return openNotch(args, argv.slice(1));
     if (cmd === 'gen-sounds') return require('../src/gensounds').run();
     if (cmd === 'install-hooks') return installHooks();
     if (cmd === 'uninstall-hooks') return uninstallHooks();

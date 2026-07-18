@@ -97,6 +97,9 @@ function getStats(source) {
   if (data.waiting && data.eta && data.eta.working) data.waiting = null;
   data.notifications = events.slice(0, 10);
   data.pending = approvals.readPending();
+  // hooks (approvals, notifications) are Claude Code machinery; on the pure
+  // Codex dashboard they would claim "Claude is waiting" about the wrong agent
+  if (source === 'codex') { data.waiting = null; data.pending = []; data.notifications = []; }
   data.rules = approvals.readRules();
   data.ntfyTopic = config.ntfyTopic || '';
   // notification preferences + per-session modes, so the UI can render toggles
@@ -407,16 +410,16 @@ function createServer() {
         if (!b.sid || !b.at || !b.text) { res.writeHead(400); return res.end('sid, at, text required'); }
         const at = Number(b.at);
         if (!isFinite(at) || at < Date.now() - 60000) { res.writeHead(400); return res.end('time is in the past'); }
-        // pick up the session's cwd so claude --resume runs from the right project
-        let cwd = b.cwd || null;
-        try {
-          const st = getStats();
-          const sess = (st.sessions || []).find((s) => s.sid === b.sid);
-          if (sess && sess.cwd) cwd = sess.cwd;
-        } catch (e) {}
-        const it = scheduler.add({ sid: b.sid, at, text: b.text, cwd });
+        const it = scheduler.add({ sid: b.sid, at, text: b.text });
         statsCache.at = 0;
         sendJson(res, { ok: true, item: it });
+      });
+    }
+    if (url === '/api/schedule-now' && req.method === 'POST') {
+      return readBody(req, (b) => {
+        const ok = scheduler.requeue(b.id);
+        statsCache.at = 0;
+        sendJson(res, { ok });
       });
     }
     if (url === '/api/schedule-remove' && req.method === 'POST') {

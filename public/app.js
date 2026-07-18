@@ -1,6 +1,7 @@
 'use strict';
 
 // ---------- state ----------
+function agentName() { return state.sourceFilter === 'codex' ? 'Codex' : 'Claude'; }
 function statsUrl() {
   return '/api/stats' + (state.sourceFilter ? '?source=' + state.sourceFilter : '');
 }
@@ -440,7 +441,7 @@ function phraseFor(s) {
   return pool[Math.floor(Date.now() / 10000) % pool.length];
 }
 
-// turn the latest tool call into a readable "what Claude is doing" label
+// turn the latest tool call into a readable "what the agent is doing" label
 var VERB = {
   Edit: 'editing', MultiEdit: 'editing', Write: 'writing', NotebookEdit: 'editing',
   Read: 'reading', Bash: 'running', Grep: 'searching', Glob: 'searching', LS: 'listing',
@@ -602,7 +603,7 @@ function renderOffice() {
     subEl.textContent = 'finished, waiting for you';
   } else {
     etaEl.textContent = 'nothing running';
-    subEl.textContent = 'Claude is resting';
+    subEl.textContent = agentName() + ' is resting';
   }
 
   // most important numbers, surfaced right on this screen
@@ -822,7 +823,7 @@ function render() {
   var wEl = document.getElementById('waiting');
   if (s.waiting) {
     wEl.hidden = false;
-    document.getElementById('waiting-text').textContent = s.waiting.message || 'Claude is waiting for you';
+    document.getElementById('waiting-text').textContent = s.waiting.message || (agentName() + ' is waiting for you');
     document.getElementById('waiting-meta').textContent =
       (s.waiting.project ? s.waiting.project + ' · ' : '') + relTime(s.waiting.time);
     document.title = '● Pulse - waiting for you';
@@ -1018,10 +1019,22 @@ document.getElementById('appr-toggle').addEventListener('click', function () {
 // hands off and drops the --app flag) - that path stays CLI-only.
 var notchBtn = document.getElementById('notch-open');
 if (notchBtn) notchBtn.addEventListener('click', function () {
-  var left = Math.max(0, Math.round(((screen.width || 1440) - 470) / 2));
-  var w = window.open('/notch', 'pulse-notch',
-    'popup=yes,width=470,height=190,top=0,left=' + left + ',menubar=no,toolbar=no,location=no,status=no');
-  if (w) { try { w.focus(); } catch (e) {} }
+  // the native overlay floats above every app and Space; first run compiles
+  // it (~10s), so show a busy state. Fallback: an in-browser popup.
+  notchBtn.disabled = true;
+  notchBtn.textContent = '…';
+  var restore = function () { notchBtn.disabled = false; notchBtn.textContent = '▂'; };
+  fetch('/api/notch-open', { method: 'POST' }).then(function (r) { return r.json(); }).then(function (d) {
+    restore();
+    if (!d.ok) {
+      var left = Math.max(0, Math.round(((screen.width || 1440) - 470) / 2));
+      window.open('/notch', 'pulse-notch',
+        'popup=yes,width=470,height=190,top=0,left=' + left + ',menubar=no,toolbar=no,location=no,status=no');
+    }
+  }).catch(function () {
+    restore();
+    window.open('/notch', 'pulse-notch', 'popup=yes,width=470,height=190,top=0');
+  });
 });
 
 // ---------- fullscreen ----------
@@ -1135,11 +1148,21 @@ function schedHtml(sid) {
   var rows = items.map(function (it) {
     var when = new Date(it.at);
     var label = String(when.getHours()).padStart(2, '0') + ':' + String(when.getMinutes()).padStart(2, '0') +
-      (when.toDateString() !== new Date().toDateString() ? ' tomorrow' : '');
+      (when.toDateString() !== new Date().toDateString() ? ' ' + when.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '');
     var st = it.status === 'pending' ? '' : ' · ' + it.status;
+    var extra = '';
+    if (it.status === 'sent' && it.resultSid) {
+      extra = '<button class="chip chip--accent sched__open" data-open-sid="' + esc(it.resultSid) + '" style="border:0;cursor:pointer">open result</button>';
+    } else if (it.status === 'failed') {
+      extra = (it.error ? '<span class="sched__err" title="' + esc(it.error) + '">' + esc(it.error.slice(0, 60)) + '</span>' : '') +
+        '<button class="chip sched__retry" data-retry-id="' + esc(it.id) + '" style="border:0;cursor:pointer">retry now</button>';
+    } else if (it.status === 'missed') {
+      extra = '<span class="sched__err">missed — Mac was asleep or Pulse was down</span>' +
+        '<button class="chip sched__retry" data-retry-id="' + esc(it.id) + '" style="border:0;cursor:pointer">send now</button>';
+    }
     return '<div class="sched__item' + (it.status !== 'pending' ? ' is-done' : '') + '">' +
       '<span class="sched__when">⏰ ' + esc(label) + st + '</span>' +
-      '<span class="sched__text">' + esc(it.text.slice(0, 120)) + '</span>' +
+      '<span class="sched__text">' + esc(it.text.slice(0, 120)) + '</span>' + extra +
       (it.status === 'pending' ? '<button class="sched__del" data-sched-id="' + esc(it.id) + '">✕</button>' : '') +
     '</div>';
   }).join('');
@@ -1186,6 +1209,19 @@ document.addEventListener('click', function (e) {
     }).then(function (r) { return r.json(); }).then(function () {
       return fetchStats();
     }).then(function (r) { return r.json(); }).then(function (d) {
+      state.stats = d; renderSession();
+    }).catch(function () {});
+    return;
+  }
+  var op = e.target.closest('.sched__open');
+  if (op) { e.stopPropagation(); openSession(op.getAttribute('data-open-sid')); return; }
+  var rt2 = e.target.closest('.sched__retry');
+  if (rt2) {
+    e.stopPropagation();
+    fetch('/api/schedule-now', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: rt2.getAttribute('data-retry-id') }),
+    }).then(function () { return fetchStats(); }).then(function (r) { return r.json(); }).then(function (d) {
       state.stats = d; renderSession();
     }).catch(function () {});
     return;

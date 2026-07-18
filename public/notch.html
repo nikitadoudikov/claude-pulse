@@ -103,6 +103,7 @@
           document.getElementById('appr-sum').textContent = p.tool + ': ' + (p.summary || '');
           box.hidden = false;
         } else { pendingId = null; box.hidden = true; }
+        reportHeight();
       }).catch(function () {
         document.getElementById('state').textContent = 'pulse is not running';
       });
@@ -117,6 +118,16 @@
     document.getElementById('b-allow').addEventListener('click', function () { decide('allow', 'once'); });
     document.getElementById('b-all').addEventListener('click', function () { decide('allow', 'all'); });
     document.getElementById('b-deny').addEventListener('click', function () { decide('deny', 'once'); });
+    // inside the native overlay, tell the window how tall the pill really is
+    // so the transparent remainder never blocks clicks on whatever is below
+    function reportHeight() {
+      try {
+        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.resize) {
+          var pill = document.querySelector('.pill');
+          window.webkit.messageHandlers.resize.postMessage(Math.ceil(pill.getBoundingClientRect().height) + 2);
+        }
+      } catch (e) {}
+    }
     tick();
     setInterval(tick, 2000);
   </script>

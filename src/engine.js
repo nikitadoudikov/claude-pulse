@@ -250,10 +250,18 @@ function scan(config, nowMs, calibrateAt, source) {
   // fold in OpenAI Codex CLI sessions too (set "codex": false in config to disable)
   if (config.codex !== false) {
     const codexToolSeen = new Set();
+    const codexTokSeen = new Set();
     for (const fp of codex.listCodexFiles()) {
       const d = getCodexFileData(fp);
       if (!d) continue;
-      for (const e of d.tokens) allTokens.push(e);
+      for (const e of d.tokens) {
+        // forked rollouts replay the parent's token_count events too; the same
+        // usage entry showing up in two files must only be counted once
+        const k = e.sid + '|' + e.t + '|' + e.inp + '|' + e.crd + '|' + e.out;
+        if (codexTokSeen.has(k)) continue;
+        codexTokSeen.add(k);
+        allTokens.push(e);
+      }
       for (const t of d.tools) {
         // forked rollouts replay the parent's tool calls; call ids are stable
         if (t.key) { if (codexToolSeen.has(t.key)) continue; codexToolSeen.add(t.key); }
