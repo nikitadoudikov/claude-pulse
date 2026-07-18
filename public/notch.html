@@ -40,6 +40,9 @@
     .deny:hover { border-color: #cc6b5a; color: #cc6b5a; }
     .bar { height: 3px; border-radius: 2px; background: rgba(255,255,255,.09); margin-top: 8px; overflow: hidden; }
     .bar i { display: block; height: 100%; background: #d97757; border-radius: 2px; transition: width .6s; }
+    .info { margin-top: 7px; display: flex; gap: 10px; font-size: 10.5px; color: #6f6d64; white-space: nowrap; overflow: hidden; }
+    .info b { color: #9a988e; font-weight: 500; }
+    .dot.limit { background: #cc6b5a; }
     a.open { color: #6f6d64; text-decoration: none; font-size: 11px; }
     [hidden] { display: none !important; }
   </style>
@@ -53,6 +56,7 @@
     </div>
     <div class="sub" id="sub"></div>
     <div class="bar"><i id="ctx" style="width:0%"></i></div>
+    <div class="info" id="info"></div>
     <div class="appr" id="appr" hidden>
       <div class="appr__sum" id="appr-sum"></div>
       <div class="btns">
@@ -80,22 +84,41 @@
     }
     function tick() {
       fetch('/api/stats').then(function (r) { return r.json(); }).then(function (s) {
-        var waiting = (s.pending && s.pending.length) || s.waiting;
+        var now = Date.now();
+        var limit = s.limitHit && s.limitHit.resetsAt && s.limitHit.resetsAt > now ? s.limitHit : null;
+        var waiting = !limit && ((s.pending && s.pending.length) || s.waiting);
         var phase = waiting ? 'waiting' : (s.eta ? s.eta.phase : 'idle');
         var dot = document.getElementById('dot');
-        dot.className = 'dot ' + (phase === 'working' ? 'working' : phase === 'done' ? 'done' : waiting ? 'waiting' : '');
+        dot.className = 'dot ' + (limit ? 'limit' : phase === 'working' ? 'working' : phase === 'done' ? 'done' : waiting ? 'waiting' : '');
         var stEl = document.getElementById('state');
         var a = s.active;
-        if (waiting) stEl.textContent = 'needs you';
+        // a usage-limit hit outranks everything: "needs you" while nothing can
+        // run is a lie, show when work can resume instead
+        if (limit) stEl.textContent = 'limit reached — resets in ' + dur(limit.resetsAt - now);
+        else if (waiting) stEl.textContent = 'needs you';
         else if (phase === 'working') stEl.textContent = (s.activity && s.activity[0]) ? (s.activity[0].name + ' · ' + (s.activity[0].hint || '').slice(0, 30)) : 'working…';
         else if (phase === 'done') stEl.textContent = 'done — your turn';
         else stEl.textContent = 'idle';
         document.getElementById('meta').textContent =
           fmt(s.windows.today.tokens) + ' · $' + (s.windows.today.cost || 0).toFixed(0) + ' today';
         var sub = a ? (a.project + ' · ' + a.title) : '';
-        if (phase === 'working' && s.eta && s.eta.remainingMs != null) sub = '~' + dur(s.eta.remainingMs) + ' left · ' + sub;
+        if (limit) sub = 'back at ' + (s.limitHit.resetText || '') + (sub ? ' · ' + sub : '');
+        else if (phase === 'working' && s.eta && s.eta.remainingMs != null) sub = '~' + dur(s.eta.remainingMs) + ' left · ' + sub;
         document.getElementById('sub').textContent = sub;
         document.getElementById('ctx').style.width = (a ? a.contextPercent : 0) + '%';
+        // one dense line of the numbers that matter at a glance
+        var f5 = s.windows.fiveHour || {};
+        var cap = (s.budgets && s.budgets.fiveHour) || s.limitCeiling || (s.peaks && s.peaks.fiveHour) || 0;
+        var pct5 = cap ? Math.min(999, Math.round((f5.cost || 0) / cap * 100)) : 0;
+        var burn = (s.windows.hour && s.windows.hour.cost) || 0;
+        var live = (s.activeSessions || []).length;
+        var reset5 = s.resets && s.resets.fiveHourMs != null ? dur(s.resets.fiveHourMs) : null;
+        var bits = [];
+        bits.push('5h <b>' + pct5 + '%</b>' + (reset5 ? ' · resets ' + reset5 : ''));
+        if (burn > 0.5) bits.push('burn <b>$' + burn.toFixed(0) + '/h</b>');
+        bits.push('live <b>' + live + '</b>');
+        bits.push('week <b>$' + ((s.windows.week && s.windows.week.cost) || 0).toFixed(0) + '</b>');
+        document.getElementById('info').innerHTML = bits.join('<span> · </span>');
         var p = (s.pending || [])[0];
         var box = document.getElementById('appr');
         if (p) {

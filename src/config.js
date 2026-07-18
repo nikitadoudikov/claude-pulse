@@ -75,6 +75,21 @@ function loadConfig() {
 
   const cfg = Object.assign({}, defaults, user);
   cfg.pricing = Object.assign({}, PRICING, user.pricing || {});
+  // extra session roots (e.g. rsync'd mirrors of another host), unified into
+  // the same dashboard. Each: { label, claudeProjects?, codexSessions? }.
+  // CLAUDE_PULSE_EXTRA_ROOTS (JSON array) overrides the config file entry.
+  let roots = user.extraRoots;
+  if (process.env.CLAUDE_PULSE_EXTRA_ROOTS) {
+    try { roots = JSON.parse(process.env.CLAUDE_PULSE_EXTRA_ROOTS); } catch (e) {}
+  }
+  cfg.extraRoots = Array.isArray(roots)
+    ? roots.filter((r) => r && (r.claudeProjects || r.codexSessions))
+        .map((r) => ({
+          label: String(r.label || 'remote'),
+          claudeProjects: r.claudeProjects ? String(r.claudeProjects) : null,
+          codexSessions: r.codexSessions ? String(r.codexSessions) : null,
+        }))
+    : [];
   // Budgets are opt-in only. We never derive a USD budget from the plan: real
   // subscription limits are not exposed by Anthropic, and the API-equivalent
   // cost dwarfs any small preset, which produced nonsense like "2232% of limit".

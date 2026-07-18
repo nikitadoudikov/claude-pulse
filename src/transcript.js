@@ -13,22 +13,30 @@ const path = require('path');
 const PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects');
 
 function listSessions() {
+  const roots = [{ dir: PROJECTS_DIR, label: null }];
+  try {
+    for (const r of require('./config').loadConfig().extraRoots || []) {
+      if (r.claudeProjects) roots.push({ dir: r.claudeProjects, label: r.label });
+    }
+  } catch (e) {}
   const out = [];
-  let dirs;
-  try { dirs = fs.readdirSync(PROJECTS_DIR, { withFileTypes: true }); } catch (e) { return out; }
-  for (const d of dirs) {
-    if (!d.isDirectory()) continue;
-    const p = path.join(PROJECTS_DIR, d.name);
-    let files;
-    try { files = fs.readdirSync(p); } catch (e) { continue; }
-    for (const f of files) {
-      if (!f.endsWith('.jsonl')) continue;
-      const fp = path.join(p, f);
-      let st;
-      try { st = fs.statSync(fp); } catch (e) { continue; }
-      // newer Claude Code builds write background "observer" transcripts next
-      // to real sessions; tag them so the UI can hide them by default
-      out.push({ sid: f.replace(/\.jsonl$/, ''), file: fp, mtimeMs: st.mtimeMs, size: st.size, observer: /^observer\b/i.test(f) });
+  for (const root of roots) {
+    let dirs;
+    try { dirs = fs.readdirSync(root.dir, { withFileTypes: true }); } catch (e) { continue; }
+    for (const d of dirs) {
+      if (!d.isDirectory()) continue;
+      const p = path.join(root.dir, d.name);
+      let files;
+      try { files = fs.readdirSync(p); } catch (e) { continue; }
+      for (const f of files) {
+        if (!f.endsWith('.jsonl')) continue;
+        const fp = path.join(p, f);
+        let st;
+        try { st = fs.statSync(fp); } catch (e) { continue; }
+        // newer Claude Code builds write background "observer" transcripts next
+        // to real sessions; tag them so the UI can hide them by default
+        out.push({ sid: f.replace(/\.jsonl$/, ''), file: fp, mtimeMs: st.mtimeMs, size: st.size, observer: /^observer\b/i.test(f), host: root.label });
+      }
     }
   }
   out.sort((a, b) => b.mtimeMs - a.mtimeMs);

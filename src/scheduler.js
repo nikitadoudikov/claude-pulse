@@ -156,8 +156,17 @@ function runDue(onSent) {
       fs.mkdirSync(RUNS, { recursive: true });
       const outFile = path.join(RUNS, it.id + '.json');
       const errFile = path.join(RUNS, it.id + '.err');
+      // strip inherited API-key auth: the daemon may have been started from a
+      // shell that exports ANTHROPIC_API_KEY (a Claude Code session does),
+      // which overrides the user's claude.ai login inside the child and makes
+      // headless runs fail with 401 or silently bill the API key instead of
+      // the subscription. The claude CLI's own stored login needs no env.
+      const env = Object.assign({}, process.env);
+      delete env.ANTHROPIC_API_KEY;
+      delete env.ANTHROPIC_AUTH_TOKEN;
       const opts = {
         detached: true,
+        env,
         stdio: ['ignore', fs.openSync(outFile, 'w'), fs.openSync(errFile, 'w')],
       };
       const cwd = sessionCwd(it.sid);

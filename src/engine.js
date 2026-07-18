@@ -12,21 +12,26 @@ const PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects');
 // path -> { mtimeMs, size, data }
 const fileCache = new Map();
 
-function listJsonl() {
-  const out = [];
-  let dirs;
-  try {
-    dirs = fs.readdirSync(PROJECTS_DIR, { withFileTypes: true });
-  } catch (e) {
-    return out;
+// every session jsonl across the local root plus any configured extraRoots
+// (rsync'd mirrors of a second host etc.); extra-root files carry that root's
+// label so the UI can show where a session came from (#9).
+function listJsonl(extraRoots) {
+  const roots = [{ dir: PROJECTS_DIR, label: null }];
+  for (const r of extraRoots || []) {
+    if (r.claudeProjects) roots.push({ dir: r.claudeProjects, label: r.label });
   }
-  for (const d of dirs) {
-    if (!d.isDirectory()) continue;
-    const p = path.join(PROJECTS_DIR, d.name);
-    let files;
-    try { files = fs.readdirSync(p); } catch (e) { continue; }
-    for (const f of files) {
-      if (f.endsWith('.jsonl')) out.push({ path: path.join(p, f), observer: /^observer\b/i.test(f) });
+  const out = [];
+  for (const root of roots) {
+    let dirs;
+    try { dirs = fs.readdirSync(root.dir, { withFileTypes: true }); } catch (e) { continue; }
+    for (const d of dirs) {
+      if (!d.isDirectory()) continue;
+      const p = path.join(root.dir, d.name);
+      let files;
+      try { files = fs.readdirSync(p); } catch (e) { continue; }
+      for (const f of files) {
+        if (f.endsWith('.jsonl')) out.push({ path: path.join(p, f), observer: /^observer\b/i.test(f), label: root.label });
+      }
     }
   }
   return out;
@@ -210,7 +215,7 @@ function scan(config, nowMs, calibrateAt, source) {
   const now = nowMs || Date.now();
   const pricing = config.pricing;
 
-  const files = listJsonl();
+  const files = listJsonl(config.extraRoots);
   let allTokens = [];
   let allTools = [];
   let sessions = {};
@@ -223,6 +228,7 @@ function scan(config, nowMs, calibrateAt, source) {
     for (const sid of Object.keys(d.sessions)) {
       const fs0 = d.sessions[sid];
       if (f.observer) fs0.observer = true;
+      if (f.label) fs0.host = f.label;
       const cur = sessions[sid];
       if (!cur) { sessions[sid] = Object.assign({}, fs0); continue; }
       // merge a session that spans multiple files
@@ -251,9 +257,10 @@ function scan(config, nowMs, calibrateAt, source) {
   if (config.codex !== false) {
     const codexToolSeen = new Set();
     const codexTokSeen = new Set();
-    for (const fp of codex.listCodexFiles()) {
-      const d = getCodexFileData(fp);
+    for (const cf of codex.listCodexFiles(config.extraRoots)) {
+      const d = getCodexFileData(cf.path);
       if (!d) continue;
+      if (cf.label) for (const cs of Object.keys(d.sessions)) d.sessions[cs].host = cf.label;
       for (const e of d.tokens) {
         // forked rollouts replay the parent's token_count events too; the same
         // usage entry showing up in two files must only be counted once
@@ -417,6 +424,7 @@ function scan(config, nowMs, calibrateAt, source) {
       model: modelKey(s.model),
       source: s.source || 'claude',
       observer: !!s.observer,
+      host: s.host || null,
       lastPrompt: s.lastPrompt,
       firstT: s.firstT,
       lastT: s.lastT,
@@ -606,7 +614,7 @@ function cap(s, n) {
 
 function sessionDigest(sid, config) {
   const pricing = config && config.pricing;
-  const all = listJsonl().map(f => f.path);
+  const all = listJsonl(config && config.extraRoots).map(f => f.path);
   let files = all.filter(fp => path.basename(fp) === sid + '.jsonl');
   if (!files.length) files = all; // fallback: scan everything for this sid
 
@@ -703,8 +711,8 @@ function dayDigest(date, config) {
     }
   };
 
-  for (const f of listJsonl()) fold(getFileData(f.path));
-  if (!config || config.codex !== false) for (const fp of codex.listCodexFiles()) fold(getCodexFileData(fp));
+  for (const f of listJsonl(config && config.extraRoots)) fold(getFileData(f.path));
+  if (!config || config.codex !== false) for (const cf of codex.listCodexFiles(config && config.extraRoots)) fold(getCodexFileData(cf.path));
 
   const sessions = Object.keys(bySid)
     .map((sid) => ({

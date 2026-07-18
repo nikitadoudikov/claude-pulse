@@ -797,3 +797,5 @@ body.office-mode .office__sub { color: #b7b5ab; }
 /* schedule item states */
 .sched__err { font-size: 11px; color: var(--danger); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
 .sched__retry { cursor: pointer; }
+
+.chip--host { background: rgba(106,154,120,.15); color: var(--ok); font-size: 10px; }

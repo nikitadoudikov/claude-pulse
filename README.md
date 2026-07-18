@@ -294,6 +294,30 @@ pushes), turn individual hooks' pushes off without unsetting the topic:
 All three default to `true`. They gate only the phone push; desktop
 notifications and the dashboard event feed are unaffected.
 
+## Multiple machines in one dashboard
+
+Pulse reads `~/.claude/projects` and `~/.codex/sessions` on the local machine.
+To fold in sessions from other hosts, mirror their directories locally however
+you like (rsync on a timer works well) and point `extraRoots` at the mirrors
+in `~/.claude-pulse.json`:
+
+```json
+{
+  "extraRoots": [
+    {
+      "label": "buildbox",
+      "claudeProjects": "/srv/mirrors/buildbox/claude-projects",
+      "codexSessions": "/srv/mirrors/buildbox/codex-sessions"
+    }
+  ]
+}
+```
+
+Both directory keys are optional per entry. Sessions from an extra root show
+a green label chip with the root's name in the Sessions list and search
+results, and count into every total. The `CLAUDE_PULSE_EXTRA_ROOTS` env var
+(same JSON array) overrides the config entry.
+
 ## Configuration
 
 Copy `config.example.json` to `~/.claude-pulse.json` and edit. Every field is optional.

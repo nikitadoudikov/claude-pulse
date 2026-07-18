@@ -38,7 +38,7 @@ function searchSessions(query, opts = {}) {
     if (!count) continue;
     // meta.lastT is the raw ISO string from the log; the UI wants epoch ms
     const lastMs = meta.lastT ? Date.parse(meta.lastT) || null : null;
-    out.push({ sid: meta.sid, title: meta.title, project: meta.project, lastT: lastMs, observer: !!s.observer, count, snippets });
+    out.push({ sid: meta.sid, title: meta.title, project: meta.project, lastT: lastMs, observer: !!s.observer, host: s.host || null, count, snippets });
     if (out.length >= limit) break;
   }
   return out;

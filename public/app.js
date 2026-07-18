@@ -192,7 +192,7 @@ function renderSessions() {
   var rows = list.map(function (x) {
     return '<div class="trow trow--link" data-sid="' + esc(x.sid) + '">' +
       '<span class="dot ' + (x.active ? 'is-on' : '') + '"></span>' +
-      '<span class="trow__title">' + esc(x.title) + (queued[x.sid] ? ' <span class="chip chip--sched" title="a scheduled message is queued">⏰</span>' : '') + ' <small>' + esc(x.project) + '</small></span>' +
+      '<span class="trow__title">' + esc(x.title) + (queued[x.sid] ? ' <span class="chip chip--sched" title="a scheduled message is queued">⏰</span>' : '') + ' <small>' + esc(x.project) + '</small>' + (x.host ? ' <span class="chip chip--host" title="from an extra session root">' + esc(x.host) + '</span>' : '') + '</span>' +
       '<span class="trow__model">' + (x.source === 'codex' ? '<span class="chip chip--codex">Codex</span> ' : '') + '<span class="chip">' + esc(x.model) + '</span></span>' +
       '<span class="trow__num">' + fmtTokens(x.tokens) + '</span>' +
       '<span class="trow__num trow__cost">' + fmtCost(x.cost) + '</span>' +
@@ -969,7 +969,7 @@ function renderSearch() {
       return '<div class="sr__snip"><span class="sr__who">' + esc(sn.role === 'user' ? 'you' : 'claude') + '</span> ' + hl(sn.text, q) + '</div>';
     }).join('');
     return '<div class="sr trow--link" data-sid="' + esc(x.sid) + '">' +
-      '<div class="sr__top"><span class="sr__title">' + hl(x.title || x.sid, q) + ' <small>' + esc(x.project) + (x.lastT ? ' · ' + relTime(x.lastT) : '') + '</small></span>' +
+      '<div class="sr__top"><span class="sr__title">' + hl(x.title || x.sid, q) + ' <small>' + esc(x.project) + (x.lastT ? ' · ' + relTime(x.lastT) : '') + '</small>' + (x.host ? ' <span class="chip chip--host">' + esc(x.host) + '</span>' : '') + '</span>' +
       '<span class="sr__count">' + x.count + '×</span></div>' + snips + '</div>';
   }).join('');
   box.innerHTML = rows || '<div class="empty">nothing found for "' + esc(q) + '"</div>';
@@ -1171,7 +1171,7 @@ function schedHtml(sid) {
       '<input type="time" id="sched-time" class="sched__inp" />' +
       '<input type="text" id="sched-text" class="sched__inp sched__inp--text" placeholder="continue where you left off" />' +
       '<button class="abtn abtn--allow" id="sched-queue">queue</button>' +
-      '<span class="sched__hint">runs claude --resume headless at that time; a past time means tomorrow</span>' +
+      '<span class="sched__hint">runs claude --resume headless at that time; a past time means tomorrow. Note: resuming replays the session\'s full context — on a long session that is a real chunk of your limit</span>' +
     '</div>' +
     (rows ? '<div class="sched__list">' + rows + '</div>' : '') +
   '</div>';

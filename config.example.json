@@ -18,6 +18,12 @@
     "week": 1100
   },
   "pricing": {
-    "opus": { "in": 15, "out": 75, "cacheWrite": 18.75, "cacheRead": 1.5 }
-  }
+    "opus": {
+      "in": 15,
+      "out": 75,
+      "cacheWrite": 18.75,
+      "cacheRead": 1.5
+    }
+  },
+  "extraRoots": []
 }

@@ -46,18 +46,25 @@ function loadTitles() {
   return map;
 }
 
-// Every rollout-*.jsonl under the date hierarchy.
-function listCodexFiles() {
+// Every rollout-*.jsonl under the date hierarchy, in the local root plus any
+// configured extraRoots (#9). Entries are { path, label }.
+function listCodexFiles(extraRoots) {
+  const roots = [{ dir: CODEX_SESSIONS, label: null }];
+  for (const r of extraRoots || []) {
+    if (r.codexSessions) roots.push({ dir: r.codexSessions, label: r.label });
+  }
   const out = [];
-  (function walk(dir) {
-    let ents;
-    try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
-    for (const ent of ents) {
-      const fp = path.join(dir, ent.name);
-      if (ent.isDirectory()) walk(fp);
-      else if (ent.name.indexOf('rollout-') === 0 && ent.name.endsWith('.jsonl')) out.push(fp);
-    }
-  })(CODEX_SESSIONS);
+  for (const root of roots) {
+    (function walk(dir) {
+      let ents;
+      try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+      for (const ent of ents) {
+        const fp = path.join(dir, ent.name);
+        if (ent.isDirectory()) walk(fp);
+        else if (ent.name.indexOf('rollout-') === 0 && ent.name.endsWith('.jsonl')) out.push({ path: fp, label: root.label });
+      }
+    })(root.dir);
+  }
   return out;
 }
 
