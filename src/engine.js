@@ -747,4 +747,42 @@ function dayDigest(date, config) {
   return { date, tokens, cost, firstT, lastT, sessions, tools };
 }
 
-module.exports = { scan, sessionDigest, dayDigest, listJsonl, PROJECTS_DIR };
+// ---- per-day totals for an arbitrary window (heatmap paging) ----
+function dailyRange(config, endMs, days) {
+  const pricing = config.pricing;
+  const map = {};
+  const end = new Date(endMs);
+  end.setHours(0, 0, 0, 0);
+  for (let i = days - 1; i >= 0; i--) {
+    const k = dateKey(end.getTime() - i * 86400 * 1000);
+    map[k] = { date: k, tokens: 0, cost: 0 };
+  }
+  const foldTokens = (list) => {
+    for (const e of list) {
+      const k = dateKey(e.t);
+      if (map[k]) { map[k].tokens += entryTokens(e); map[k].cost += entryCost(e, pricing); }
+    }
+  };
+  for (const f of listJsonl(config.extraRoots)) {
+    const d = getFileData(f.path);
+    if (d) foldTokens(d.tokens);
+  }
+  if (config.codex !== false) {
+    const seen = new Set();
+    for (const cf of codex.listCodexFiles(config.extraRoots)) {
+      const d = getCodexFileData(cf.path);
+      if (!d) continue;
+      const uniq = [];
+      for (const e of d.tokens) {
+        const k = e.sid + '|' + e.t + '|' + e.inp + '|' + e.crd + '|' + e.out;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        uniq.push(e);
+      }
+      foldTokens(uniq);
+    }
+  }
+  return Object.values(map);
+}
+
+module.exports = { scan, sessionDigest, dayDigest, dailyRange, listJsonl, PROJECTS_DIR };

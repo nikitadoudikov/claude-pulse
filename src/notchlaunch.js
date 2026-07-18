@@ -19,6 +19,10 @@ function stopNative() {
   try { execSync('pkill -x PulseNotch', { stdio: 'ignore' }); return true; } catch (e) { return false; }
 }
 
+function nativeRunning() {
+  try { execSync('pgrep -x PulseNotch', { stdio: 'ignore' }); return true; } catch (e) { return false; }
+}
+
 // compile once (and again only when the source changes); ~10s with swiftc
 function ensureBinary() {
   let need = true;
@@ -78,4 +82,4 @@ function launch(port) {
   return { ok: false, url };
 }
 
-module.exports = { launch, stopNative, W, H };
+module.exports = { launch, stopNative, nativeRunning, W, H };

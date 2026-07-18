@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { loadConfig, saveConfig, PLAN_BUDGETS } = require('./config');
-const { scan, sessionDigest, dayDigest } = require('./engine');
+const { scan, sessionDigest, dayDigest, dailyRange } = require('./engine');
 const notify = require('./notify');
 const approvals = require('./approvals');
 const transcript = require('./transcript');
@@ -196,6 +196,16 @@ function createServer() {
     }
     if (url === '/api/events') return handleSse(req, res);
     if (url === '/api/health') return sendJson(res, { ok: true });
+    // heatmap paging: per-day totals ending at ?end (YYYY-MM-DD), ?days back
+    if (url === '/api/daily') {
+      const q = new URLSearchParams(req.url.split('?')[1] || '');
+      const days = Math.min(366, Math.max(7, parseInt(q.get('days'), 10) || 91));
+      let endMs = Date.now();
+      const endStr = q.get('end');
+      if (endStr && /^\d{4}-\d{2}-\d{2}$/.test(endStr)) endMs = new Date(endStr + 'T12:00:00').getTime();
+      try { return sendJson(res, { days: dailyRange(loadConfig(), endMs, days) }); }
+      catch (e) { res.writeHead(500); return res.end('error'); }
+    }
     if (url === '/api/day') {
       const q = new URLSearchParams(req.url.split('?')[1] || '');
       const date = q.get('date') || '';
@@ -213,11 +223,18 @@ function createServer() {
       });
     }
     if (url === '/api/notch-open' && req.method === 'POST') {
-      // spawns a local browser window, so localhost only
+      // spawns / kills a local window, so localhost only. The button is a
+      // toggle: if the overlay is up, a second press closes it.
       const remote = req.socket.remoteAddress || '';
       const isLocal = remote.indexOf('127.0.0.1') !== -1 || remote === '::1' || remote.indexOf('::ffff:127.0.0.1') !== -1;
       if (!isLocal) { res.writeHead(403); return res.end('forbidden'); }
-      const r = require('./notchlaunch').launch(req.socket.localPort);
+      const nl = require('./notchlaunch');
+      if (nl.nativeRunning()) {
+        nl.stopNative();
+        return sendJson(res, { ok: true, action: 'closed' });
+      }
+      const r = nl.launch(req.socket.localPort);
+      r.action = 'opened';
       return sendJson(res, r);
     }
     if (url === '/notch') {

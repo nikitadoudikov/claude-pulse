@@ -1026,6 +1026,7 @@ if (notchBtn) notchBtn.addEventListener('click', function () {
   var restore = function () { notchBtn.disabled = false; notchBtn.textContent = '▂'; };
   fetch('/api/notch-open', { method: 'POST' }).then(function (r) { return r.json(); }).then(function (d) {
     restore();
+    if (d.action === 'closed') return; // toggle: second press closed the overlay
     if (!d.ok) {
       var left = Math.max(0, Math.round(((screen.width || 1440) - 470) / 2));
       window.open('/notch', 'pulse-notch',
@@ -1702,33 +1703,85 @@ function renderProfile() {
   }).join('');
 }
 
-// ---------- profile heatmap: 13 weeks, GitHub-style ----------
-function renderHeatmap(s) {
-  var el = document.getElementById('profile-heat');
-  if (!el) return;
-  var daily = s.daily || [];
+// ---------- profile heatmap: GitHub-style, with month/weekday labels and paging ----------
+var MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function heatGridHtml(daily) {
   var nz = daily.map(function (d) { return d.tokens; }).filter(function (v) { return v > 0; }).sort(function (a, b) { return a - b; });
   var q = function (p) { return nz.length ? nz[Math.min(nz.length - 1, Math.floor(nz.length * p))] : 1; };
   var t1 = q(0.25), t2 = q(0.5), t3 = q(0.75);
   function lvl(v) { return !v ? 0 : v <= t1 ? 1 : v <= t2 ? 2 : v <= t3 ? 3 : 4; }
   // columns are weeks; pad the front so columns start on Monday
-  var first = daily.length ? new Date(daily[0].date) : new Date();
+  var first = daily.length ? new Date(daily[0].date + 'T12:00:00') : new Date();
   var pad = (first.getDay() + 6) % 7;
   var cells = [];
   for (var i = 0; i < pad; i++) cells.push(null);
   daily.forEach(function (d) { cells.push(d); });
   var weeks = [];
   for (var w = 0; w < cells.length; w += 7) weeks.push(cells.slice(w, w + 7));
-  el.innerHTML = weeks.map(function (col) {
+  // a month label above the column that contains the 1st (GitHub-style)
+  var months = weeks.map(function (col, wi) {
+    for (var ci = 0; ci < col.length; ci++) {
+      var d = col[ci];
+      if (d && new Date(d.date + 'T12:00:00').getDate() === 1) return MONTHS_SHORT[new Date(d.date + 'T12:00:00').getMonth()];
+      if (wi === 0 && d) { var m0 = new Date(d.date + 'T12:00:00'); if (m0.getDate() <= 7) return MONTHS_SHORT[m0.getMonth()]; }
+    }
+    return '';
+  });
+  var dayNames = ['Mon', '', 'Wed', '', 'Fri', '', ''];
+  var monthRow = '<div class="heat__months">' + months.map(function (m) {
+    return '<span>' + m + '</span>';
+  }).join('') + '</div>';
+  var grid = '<div class="heat__cols">' + weeks.map(function (col) {
+    while (col.length < 7) col.push(null);
     return '<div class="heat__col">' + col.map(function (d) {
       if (!d) return '<i class="heat__cell is-pad"></i>';
-      return '<i class="heat__cell l' + lvl(d.tokens) + '" data-day="' + esc(d.date) + '" title="' + esc(d.date) + ' · ' + fmtTokens(d.tokens) + ' tok · ' + fmtCost(d.cost) + '"></i>';
+      var niceDate = new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      return '<i class="heat__cell l' + lvl(d.tokens) + '" data-day="' + esc(d.date) + '" title="' + esc(niceDate) + ' · ' + fmtTokens(d.tokens) + ' tok · ' + fmtCost(d.cost) + '"></i>';
     }).join('') + '</div>';
-  }).join('');
-  var active = daily.filter(function (d) { return d.tokens > 0; }).length;
-  var hint = document.getElementById('profile-heat-hint');
-  if (hint) hint.textContent = active + ' active days · click a square for the full story';
+  }).join('') + '</div>';
+  var days = '<div class="heat__days">' + dayNames.map(function (n) { return '<span>' + n + '</span>'; }).join('') + '</div>';
+  return days + '<div class="heat__grid">' + monthRow + grid + '</div>';
 }
+
+function renderHeatmap(s) {
+  var el = document.getElementById('profile-heat');
+  if (!el) return;
+  var off = state.heatOffset || 0;
+  var render = function (daily) {
+    el.innerHTML = heatGridHtml(daily);
+    var active = daily.filter(function (d) { return d.tokens > 0; }).length;
+    var hint = document.getElementById('profile-heat-hint');
+    if (hint && daily.length) {
+      var fmtD = function (ds) { return new Date(ds + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); };
+      hint.textContent = fmtD(daily[0].date) + ' – ' + fmtD(daily[daily.length - 1].date) + ' · ' + active + ' active days';
+    }
+    var newer = document.getElementById('heat-newer');
+    if (newer) newer.disabled = off === 0;
+  };
+  if (off === 0) { render(s.daily || []); return; }
+  state.heatPages = state.heatPages || {};
+  if (state.heatPages[off]) { render(state.heatPages[off]); return; }
+  var end = new Date();
+  end.setDate(end.getDate() - off * 91);
+  var endStr = end.getFullYear() + '-' + String(end.getMonth() + 1).padStart(2, '0') + '-' + String(end.getDate()).padStart(2, '0');
+  el.innerHTML = '<div class="empty">loading…</div>';
+  fetch('/api/daily?days=91&end=' + endStr).then(function (r) { return r.json(); }).then(function (d) {
+    state.heatPages[off] = d.days || [];
+    if ((state.heatOffset || 0) === off) render(state.heatPages[off]);
+  }).catch(function () { el.innerHTML = '<div class="empty">failed to load</div>'; });
+}
+(function () {
+  var older = document.getElementById('heat-older');
+  var newer = document.getElementById('heat-newer');
+  if (older) older.addEventListener('click', function () {
+    state.heatOffset = (state.heatOffset || 0) + 1;
+    if (state.stats) renderHeatmap(state.stats);
+  });
+  if (newer) newer.addEventListener('click', function () {
+    state.heatOffset = Math.max(0, (state.heatOffset || 0) - 1);
+    if (state.stats) renderHeatmap(state.stats);
+  });
+})();
 
 // a plain-words story of the day, composed from the digest - no AI, just facts
 function daySummary(d, nice) {
@@ -1757,14 +1810,13 @@ function daySummary(d, nice) {
   return bits.join(' · ') + '.';
 }
 
-// click a heatmap square -> the day opens huge over frosted glass
+// click a heatmap square -> the day opens huge over frosted glass.
+// Fetch FIRST, render, then animate: swapping content mid-transition is what
+// made the old version feel janky.
 function openDay(date) {
   var ov = document.getElementById('dayov');
   var box = document.getElementById('dayov-body');
   if (!ov || !box) return;
-  box.innerHTML = '<div class="empty">loading…</div>';
-  ov.hidden = false;
-  requestAnimationFrame(function () { ov.classList.add('is-open'); }); // let the transition run
   fetch('/api/day?date=' + encodeURIComponent(date)).then(function (r) { return r.json(); }).then(function (d) {
     var when = new Date(date + 'T12:00:00');
     var weekday = when.toLocaleDateString('en-US', { weekday: 'long' });
@@ -1787,7 +1839,13 @@ function openDay(date) {
       '<p class="dayov__summary">' + esc(daySummary(d, weekday)) + '</p>' +
       (sess ? '<div class="dayov__label">the story of the day</div>' + sess : '') +
       (tools ? '<div class="dayov__label">moves</div><div class="dayov__tools">' + tools + '</div>' : '');
-  }).catch(function () { box.innerHTML = '<div class="empty">failed to load this day</div>'; });
+    ov.hidden = false;
+    requestAnimationFrame(function () { requestAnimationFrame(function () { ov.classList.add('is-open'); }); });
+  }).catch(function () {
+    box.innerHTML = '<div class="empty">failed to load this day</div>';
+    ov.hidden = false;
+    requestAnimationFrame(function () { ov.classList.add('is-open'); });
+  });
 }
 function closeDay() {
   var ov = document.getElementById('dayov');

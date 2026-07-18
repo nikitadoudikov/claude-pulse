@@ -727,8 +727,16 @@ body.office-mode .office__sub { color: #b7b5ab; }
 #sessions-jump { max-width: 260px; }
 
 /* ===== Profile heatmap ===== */
-.heat { display: flex; gap: 3px; overflow-x: auto; padding: 4px 0; }
+.heat { display: flex; gap: 8px; padding: 4px 0; }
+.heat__days { display: flex; flex-direction: column; gap: 3px; padding-top: 17px; flex: none; }
+.heat__days span { height: 13px; line-height: 13px; font-size: 9px; color: var(--faint); text-align: right; min-width: 24px; }
+.heat__grid { overflow-x: auto; }
+.heat__months { display: flex; gap: 3px; height: 14px; margin-bottom: 3px; }
+.heat__months span { width: 13px; flex: none; font-size: 9px; color: var(--faint); white-space: nowrap; overflow: visible; }
+.heat__cols { display: flex; gap: 3px; }
 .heat__col { display: flex; flex-direction: column; gap: 3px; }
+.heat__pager { display: inline-flex; align-items: center; gap: 8px; }
+.heat__pager .icon-btn:disabled { opacity: .35; cursor: default; }
 .heat__cell { width: 13px; height: 13px; border-radius: 3px; background: var(--track); display: block; }
 .heat__cell.is-pad { background: transparent; }
 .heat__cell.l1 { background: rgba(217,119,87,.25); }
@@ -768,14 +776,14 @@ body.office-mode .office__sub { color: #b7b5ab; }
   -webkit-backdrop-filter: blur(16px) saturate(.85);
   backdrop-filter: blur(16px) saturate(.85);
   display: flex; align-items: center; justify-content: center; padding: 24px;
-  opacity: 0; transition: opacity .24s var(--ease);
+  opacity: 0; transition: opacity .3s var(--ease); will-change: opacity;
 }
 .dayov.is-open { opacity: 1; }
 .dayov__card {
   width: min(52vw, 780px); min-width: min(560px, 94vw); max-height: 88vh; overflow-y: auto;
   background: var(--surface); border: 1px solid var(--hairline); border-radius: 22px;
   padding: 34px 40px; box-shadow: 0 40px 110px rgba(0,0,0,.5);
-  transform: scale(.92) translateY(14px); transition: transform .26s var(--ease);
+  transform: scale(.94) translateY(12px); transition: transform .34s cubic-bezier(.22,.9,.3,1); will-change: transform;
 }
 .dayov.is-open .dayov__card { transform: scale(1) translateY(0); }
 .dayov__weekday { font-size: 15px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
