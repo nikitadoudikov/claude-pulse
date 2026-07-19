@@ -1,25 +1,70 @@
 # Pulse for Claude Code
 
-**A local dashboard for [Claude Code](https://claude.com/claude-code) that shows what Claude is doing, what it is spending, and lets you approve its tool calls from your phone.** Zero dependencies, nothing leaves your machine.
+**A local dashboard for [Claude Code](https://claude.com/claude-code) with an actual pulse: watch what Claude is doing, what it is spending, and approve its tool calls from your phone — or from a strip under your MacBook's notch.** Zero dependencies, nothing leaves your machine.
 
-![Overview](docs/overview.png)
+![Overview](docs/overview-new.png)
 
-Claude Code already writes every session to disk. Pulse reads those files (read only) and turns them into a live dashboard: token spend by hour, day and week, the context fill of your active session, an ambient view of Claude at work, full-text search across everything you have ever run, and a notification with `Allow` / `Allow all` / `Deny` buttons when Claude needs you, on your desktop or your phone. No account, no telemetry, no network calls.
+Claude Code already writes every session to disk. Pulse reads those files (read only) and turns them into a live dashboard: token spend by hour, day and week, context fill per session, an ambient office where a little guy does your work, full-text search across everything you have ever run, scheduled messages that fire when your limit resets, and `Allow` / `Allow all` / `Deny` on your desktop, your phone, and your notch. No account, no telemetry, no network calls.
+
+## The pulse
+
+<img src="docs/ecg-close.png" width="300" alt="the ECG at rest" />
+
+*45 bpm. Claude is resting.*
+
+The heart rate is real: tool calls and generated tokens over the last two minutes drive it from a resting ~45 up to ~185 when Claude is sprinting through a refactor. When you hit your usage limit, it flatlines. It beats in the topbar on every screen, and in the notch:
+
+![Topbar](docs/topbar-ecg.png)
+
+## The notch
+
+![Notch](docs/notch.png)
+
+*A native always-on-top strip under your camera notch: state, today's numbers, context bar, burn rate — and working approval buttons. Hover it and it grows into a menu with every live session. Right-click to dismiss.*
+
+`claude-pulse notch` (or the ▂ button in the dashboard) compiles a ~100-line Swift overlay once and pins it above every app and every Space. No Electron, no frameworks — the whole thing is an NSPanel and a WKWebView.
+
+## The office
+
+![Office](docs/office.png)
+
+*Claude at his desk in New York, doing your work while you watch like a benevolent manager.*
+
+![Codex office](docs/office-codex.png)
+
+*Run Codex too? Its dashboard is a separate mono world — same building, different floor. The data splits properly: the Codex dashboard shows Codex numbers, the Claude one shows Claude's.*
+
+<img src="docs/music.png" width="380" alt="music" />
+
+*Music while it works: paste any YouTube link, or one tap of lofi / synthwave / jazz.*
+
+## The profile
+
+![Profile](docs/profile-genius.png)
+
+*Rank, streak, records, and a wall of achievements — computed entirely from your local logs. Yes, there is an achievement for burning 100M tokens in a day. No, we are not proud of how it was earned.*
+
+![Activity](docs/profile-activity.png)
+
+*A GitHub-style activity heatmap: click any square and the day opens huge over frosted glass, with a plain-words summary — when you started, when you stopped, where the tokens went.*
+
+## The limits
+
+![Limits](docs/limits.png)
+
+*The honest version of "how much do I have left": measured against your own real ceiling (learned from your last limit hit), with burn rate and minutes-to-wall. Anthropic does not publish limits; Pulse does not pretend to know them.*
 
 ## Why you might want it
 
-- **Approve from your phone.** A push with working `Allow` / `Allow all` / `Deny` buttons. No Wi-Fi setup, no IP, no open port: it works from anywhere, even on cellular. Approval cards on the dashboard show the actual command or edit, like the terminal does, and each session has an **auto mode** for long unattended runs.
-- **Schedule a message.** Hit the usage limit that resets at 10:00? Open the session, type the time and "continue", walk away — Pulse resumes the session headless at 10:00.
-- **Never lose a session.** One command recovers your last session as a readable transcript, and Pulse auto-snapshots active ones, so a crash or a frozen laptop never costs you context.
-- **See the spend.** Live tokens and API-equivalent cost by hour, day, week, model and project, against budgets you set, with a phone alert when you cross one.
-- **Ambient office.** A full-screen view of a little mascot working, resting, or waiting on you, with a rough ETA. Paste a YouTube link for background music. Quietly addictive on a second monitor.
-- **Profile & achievements.** Your rank, streak, records and a wall of achievements, computed from your own logs. Nothing leaves your machine.
+- **Approve from anywhere.** A phone push with working `Allow` / `Allow all` / `Deny` buttons — no Wi-Fi setup, no IP, works on cellular. Approval cards show the actual command or diff, and each session has an **auto mode** for long unattended runs.
+- **Schedule a message.** Limit resets at 10:00? Open the session, type the time and "continue", walk away — Pulse resumes it headless at 10:00 and links you to the result.
+- **Never lose a session.** One command recovers your last session as a readable transcript; auto-snapshots mean a crash never costs you context.
+- **See the spend.** Tokens and API-equivalent cost by hour, day, week, model and project, against budgets you set, with a phone alert when you cross one.
+- **Your week, wrapped.** A shareable Spotify-Wrapped-style card of your week, drawn to a PNG locally.
+- **Custom sounds.** `claude-pulse gen-sounds` generates the four UI sounds with ElevenLabs — done, attention, error, sent — each with one job.
+- **Multiple machines.** Point `extraRoots` at rsync'd mirrors of another host and get one unified dashboard.
 - **Search everything.** Full-text search across every session on disk, one click to the transcript.
 - **Local and private.** Reads `~/.claude` read only, serves on `127.0.0.1`, zero dependencies, no telemetry.
-
-| Ambient office view | Approve from the dashboard or your phone |
-| --- | --- |
-| ![Office](docs/office.png) | ![Approve](docs/approve.png) |
 
 ## Quick start
 

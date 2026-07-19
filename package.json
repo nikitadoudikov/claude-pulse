@@ -1,6 +1,6 @@
 {
   "name": "pulse-for-claude-code",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A local, zero-dependency dashboard for Claude Code: live token usage, context fill, lost-session recovery, and approving tool calls from your phone.",
   "bin": {
     "claude-pulse": "bin/cli.js",
