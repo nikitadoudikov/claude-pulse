@@ -11,23 +11,23 @@ A local dashboard that watches every Claude Code (and Codex) session on your mac
 
 Covered by [XDA Developers](https://www.xda-developers.com/stopped-wasting-claude-tokens-after-installing-open-source-dashboard/): "a must-have tool for anyone working with Claude."
 
-![Overview](docs/overview-new.png)
+![Overview](https://raw.githubusercontent.com/nikitadoudikov/claude-pulse/main/docs/overview-new.png)
 
 Claude Code already writes every session to disk as it happens. Pulse reads those files, read only, no account, no telemetry, and turns them into something that feels less like a log viewer and more like a cockpit: live spend by hour, day and week, context fill per session, full-text search across everything you have ever run, scheduled messages that fire the moment your limit resets, and `Allow` / `Allow all` / `Deny` that follows you to your desktop, your phone, and your notch.
 
 ## The pulse
 
-<img src="docs/ecg-close.png" width="300" alt="the ECG at rest" />
+<img src="https://raw.githubusercontent.com/nikitadoudikov/claude-pulse/main/docs/ecg-close.png" width="300" alt="the ECG at rest" />
 
 *45 bpm. Claude is resting.*
 
 The heart rate is real: tool calls and generated tokens over the last two minutes drive it from a resting ~45 up to ~185 when Claude is sprinting through a refactor. When you hit your usage limit, it flatlines. It beats in the topbar on every screen, and in the notch:
 
-![Topbar](docs/topbar-ecg.png)
+![Topbar](https://raw.githubusercontent.com/nikitadoudikov/claude-pulse/main/docs/topbar-ecg.png)
 
 ## The notch
 
-![Notch](docs/notch.png)
+![Notch](https://raw.githubusercontent.com/nikitadoudikov/claude-pulse/main/docs/notch.png)
 
 *A native always-on-top strip under your camera notch: state, today's numbers, context bar, burn rate, and working approval buttons. Hover it and it grows into a menu with every live session. Right-click to dismiss.*
 
@@ -35,31 +35,31 @@ The heart rate is real: tool calls and generated tokens over the last two minute
 
 ## The office
 
-![Office](docs/office.png)
+![Office](https://raw.githubusercontent.com/nikitadoudikov/claude-pulse/main/docs/office.png)
 
 *Claude at his desk in New York, doing your work while you watch like a benevolent manager.*
 
-![Codex office](docs/office-codex.png)
+![Codex office](https://raw.githubusercontent.com/nikitadoudikov/claude-pulse/main/docs/office-codex.png)
 
 *Run Codex too? Its dashboard is a separate mono world, same building, different floor. The data splits properly: the Codex dashboard shows Codex numbers, the Claude one shows Claude's.*
 
-<img src="docs/music.png" width="380" alt="music" />
+<img src="https://raw.githubusercontent.com/nikitadoudikov/claude-pulse/main/docs/music.png" width="380" alt="music" />
 
 *Music while it works: paste any YouTube link, or one tap of lofi / synthwave / jazz.*
 
 ## The profile
 
-![Profile](docs/profile-genius.png)
+![Profile](https://raw.githubusercontent.com/nikitadoudikov/claude-pulse/main/docs/profile-genius.png)
 
 *Rank, streak, records, and a wall of achievements, computed entirely from your local logs. Yes, there is an achievement for burning 100M tokens in a day. No, we are not proud of how it was earned.*
 
-![Activity](docs/profile-activity.png)
+![Activity](https://raw.githubusercontent.com/nikitadoudikov/claude-pulse/main/docs/profile-activity.png)
 
 *A GitHub-style activity heatmap: click any square and the day opens huge over frosted glass, with a plain-words summary of when you started, when you stopped, and where the tokens went.*
 
 ## The limits
 
-![Limits](docs/limits.png)
+![Limits](https://raw.githubusercontent.com/nikitadoudikov/claude-pulse/main/docs/limits.png)
 
 *The honest version of "how much do I have left": measured against your own real ceiling (learned from your last limit hit), with burn rate and minutes-to-wall. Anthropic does not publish limits; Pulse does not pretend to know them.*
 
