@@ -1,10 +1,17 @@
 # Pulse for Claude Code
 
-**A local dashboard for [Claude Code](https://claude.com/claude-code) with an actual pulse: watch what Claude is doing, what it is spending, and approve its tool calls from your phone — or from a strip under your MacBook's notch.** Zero dependencies, nothing leaves your machine.
+[![npm version](https://img.shields.io/npm/v/pulse-for-claude-code.svg?color=d97757&label=npm)](https://www.npmjs.com/package/pulse-for-claude-code)
+[![GitHub stars](https://img.shields.io/github/stars/nikitadoudikov/claude-pulse?color=d97757&label=stars)](https://github.com/nikitadoudikov/claude-pulse/stargazers)
+[![License: MIT](https://img.shields.io/badge/license-MIT-d97757.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D18-d97757.svg)](package.json)
+
+**Claude Code, with a pulse.**
+
+A local dashboard that watches every Claude Code (and Codex) session on your machine, gives it a literal heartbeat, and lets you approve its tool calls from your phone or a strip under your MacBook's notch. Zero dependencies. Nothing leaves your machine.
 
 ![Overview](docs/overview-new.png)
 
-Claude Code already writes every session to disk. Pulse reads those files (read only) and turns them into a live dashboard: token spend by hour, day and week, context fill per session, an ambient office where a little guy does your work, full-text search across everything you have ever run, scheduled messages that fire when your limit resets, and `Allow` / `Allow all` / `Deny` on your desktop, your phone, and your notch. No account, no telemetry, no network calls.
+Claude Code already writes every session to disk as it happens. Pulse reads those files — read only, no account, no telemetry — and turns them into something that feels less like a log viewer and more like a cockpit: live spend by hour, day and week, context fill per session, full-text search across everything you have ever run, scheduled messages that fire the moment your limit resets, and `Allow` / `Allow all` / `Deny` that follows you to your desktop, your phone, and your notch.
 
 ## The pulse
 
