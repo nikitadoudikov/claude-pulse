@@ -9,9 +9,11 @@
 
 A local dashboard that watches every Claude Code (and Codex) session on your machine, gives it a literal heartbeat, and lets you approve its tool calls from your phone or a strip under your MacBook's notch. Zero dependencies. Nothing leaves your machine.
 
+Covered by [XDA Developers](https://www.xda-developers.com/stopped-wasting-claude-tokens-after-installing-open-source-dashboard/): "a must-have tool for anyone working with Claude."
+
 ![Overview](docs/overview-new.png)
 
-Claude Code already writes every session to disk as it happens. Pulse reads those files — read only, no account, no telemetry — and turns them into something that feels less like a log viewer and more like a cockpit: live spend by hour, day and week, context fill per session, full-text search across everything you have ever run, scheduled messages that fire the moment your limit resets, and `Allow` / `Allow all` / `Deny` that follows you to your desktop, your phone, and your notch.
+Claude Code already writes every session to disk as it happens. Pulse reads those files, read only, no account, no telemetry, and turns them into something that feels less like a log viewer and more like a cockpit: live spend by hour, day and week, context fill per session, full-text search across everything you have ever run, scheduled messages that fire the moment your limit resets, and `Allow` / `Allow all` / `Deny` that follows you to your desktop, your phone, and your notch.
 
 ## The pulse
 
@@ -27,9 +29,9 @@ The heart rate is real: tool calls and generated tokens over the last two minute
 
 ![Notch](docs/notch.png)
 
-*A native always-on-top strip under your camera notch: state, today's numbers, context bar, burn rate — and working approval buttons. Hover it and it grows into a menu with every live session. Right-click to dismiss.*
+*A native always-on-top strip under your camera notch: state, today's numbers, context bar, burn rate, and working approval buttons. Hover it and it grows into a menu with every live session. Right-click to dismiss.*
 
-`claude-pulse notch` (or the ▂ button in the dashboard) compiles a ~100-line Swift overlay once and pins it above every app and every Space. No Electron, no frameworks — the whole thing is an NSPanel and a WKWebView.
+`claude-pulse notch` (or the ▂ button in the dashboard) compiles a ~100-line Swift overlay once and pins it above every app and every Space. No Electron, no frameworks. The whole thing is an NSPanel and a WKWebView.
 
 ## The office
 
@@ -39,7 +41,7 @@ The heart rate is real: tool calls and generated tokens over the last two minute
 
 ![Codex office](docs/office-codex.png)
 
-*Run Codex too? Its dashboard is a separate mono world — same building, different floor. The data splits properly: the Codex dashboard shows Codex numbers, the Claude one shows Claude's.*
+*Run Codex too? Its dashboard is a separate mono world, same building, different floor. The data splits properly: the Codex dashboard shows Codex numbers, the Claude one shows Claude's.*
 
 <img src="docs/music.png" width="380" alt="music" />
 
@@ -49,11 +51,11 @@ The heart rate is real: tool calls and generated tokens over the last two minute
 
 ![Profile](docs/profile-genius.png)
 
-*Rank, streak, records, and a wall of achievements — computed entirely from your local logs. Yes, there is an achievement for burning 100M tokens in a day. No, we are not proud of how it was earned.*
+*Rank, streak, records, and a wall of achievements, computed entirely from your local logs. Yes, there is an achievement for burning 100M tokens in a day. No, we are not proud of how it was earned.*
 
 ![Activity](docs/profile-activity.png)
 
-*A GitHub-style activity heatmap: click any square and the day opens huge over frosted glass, with a plain-words summary — when you started, when you stopped, where the tokens went.*
+*A GitHub-style activity heatmap: click any square and the day opens huge over frosted glass, with a plain-words summary of when you started, when you stopped, and where the tokens went.*
 
 ## The limits
 
@@ -63,12 +65,12 @@ The heart rate is real: tool calls and generated tokens over the last two minute
 
 ## Why you might want it
 
-- **Approve from anywhere.** A phone push with working `Allow` / `Allow all` / `Deny` buttons — no Wi-Fi setup, no IP, works on cellular. Approval cards show the actual command or diff, and each session has an **auto mode** for long unattended runs.
-- **Schedule a message.** Limit resets at 10:00? Open the session, type the time and "continue", walk away — Pulse resumes it headless at 10:00 and links you to the result.
+- **Approve from anywhere.** A phone push with working `Allow` / `Allow all` / `Deny` buttons. No Wi-Fi setup, no IP, works on cellular. Approval cards show the actual command or diff, and each session has an **auto mode** for long unattended runs.
+- **Schedule a message.** Limit resets at 10:00? Open the session, type the time and "continue", walk away. Pulse resumes it headless at 10:00 and links you to the result.
 - **Never lose a session.** One command recovers your last session as a readable transcript; auto-snapshots mean a crash never costs you context.
 - **See the spend.** Tokens and API-equivalent cost by hour, day, week, model and project, against budgets you set, with a phone alert when you cross one.
 - **Your week, wrapped.** A shareable Spotify-Wrapped-style card of your week, drawn to a PNG locally.
-- **Custom sounds.** `claude-pulse gen-sounds` generates the four UI sounds with ElevenLabs — done, attention, error, sent — each with one job.
+- **Custom sounds.** `claude-pulse gen-sounds` generates the four UI sounds with ElevenLabs (done, attention, error, sent), each with one job.
 - **Multiple machines.** Point `extraRoots` at rsync'd mirrors of another host and get one unified dashboard.
 - **Search everything.** Full-text search across every session on disk, one click to the transcript.
 - **Local and private.** Reads `~/.claude` read only, serves on `127.0.0.1`, zero dependencies, no telemetry.
