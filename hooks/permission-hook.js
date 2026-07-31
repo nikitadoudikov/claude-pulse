@@ -148,6 +148,27 @@ function pushNtfy(input) {
 }
 
 function shellQuote(s) { return '"' + String(s).replace(/["\\]/g, '\\$&') + '"'; }
+// PowerShell single-quoted string: the only escape inside one is '' for a
+// literal quote, and nothing else expands - no $var, no `backtick. So this
+// is safe for arbitrary session titles and tool names.
+function psQuote(s) { return "'" + String(s).replace(/'/g, "''") + "'"; }
+// A WinRT toast, built inline so nothing is written to disk and no module is
+// added (the package has no dependencies and this keeps it that way).
+// powershell.exe rather than pwsh: the WinRT type resolution used here works
+// in Windows PowerShell without a bridge assembly, and powershell.exe is
+// present on every Windows install where pwsh may not be. The AUMID is
+// PowerShell's own registered id; a toast needs a registered AUMID to show,
+// and borrowing that one avoids making the package install a shortcut.
+var WIN_TOAST_AUMID = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe';
+function winToastScript(title, body) {
+  return '[Windows.UI.Notifications.ToastNotificationManager,Windows.UI.Notifications,ContentType=WindowsRuntime]>$null;'
+    + '$t=[Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02);'
+    + "$n=$t.GetElementsByTagName('text');"
+    + '$n.Item(0).AppendChild($t.CreateTextNode(' + psQuote(title) + '))>$null;'
+    + '$n.Item(1).AppendChild($t.CreateTextNode(' + psQuote(body) + '))>$null;'
+    + '[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier(' + psQuote(WIN_TOAST_AUMID) + ')'
+    + '.Show([Windows.UI.Notifications.ToastNotification]::new($t))';
+}
 function desktopNotify(title, body, sound) {
   try {
     if (process.platform === 'darwin') {
@@ -161,6 +182,15 @@ function desktopNotify(title, body, sound) {
       }
     } else if (process.platform === 'linux') {
       spawn('notify-send', [title, body], { stdio: 'ignore', detached: true }).unref();
+    } else if (process.platform === 'win32') {
+      // The macOS branch plays the sound separately so it is heard even when
+      // notification sounds are off. The Windows equivalent of that override
+      // is a per-app setting the app cannot reach, so this relies on the
+      // toast's own sound; custom ~/.claude-pulse/sounds/*.mp3 playback is
+      // left for a follow-up rather than pulled in here.
+      spawn('powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', winToastScript(title, body)],
+        { stdio: 'ignore', detached: true, windowsHide: true }).unref();
     }
   } catch (e) {}
 }
